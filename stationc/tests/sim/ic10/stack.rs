@@ -32,6 +32,21 @@ yield
 }
 
 #[test]
+fn stack_pointer_at_upper_read_bound_can_peek_and_pop() -> TestResult {
+    let output = run("\
+poke 511 44
+move sp 512
+peek r0
+pop r1
+yield
+")?;
+
+    assert_register(&output.vm, 0, 44.0)?;
+    assert_register(&output.vm, 1, 44.0)?;
+    assert_sp(&output.vm, 511.0)
+}
+
+#[test]
 fn poke_writes_absolute_stack_address() -> TestResult {
     let output = run("\
 poke 0 77
@@ -78,6 +93,21 @@ fn push_past_stack_limit_faults() -> TestResult {
     let pushes = "push 1\n".repeat(513);
     let source = format!("{pushes}yield\n");
     runtime_failure(&source, 600, ErrorCode::StackAddressOutOfRange)?;
+
+    Ok(())
+}
+
+#[test]
+fn push_with_stack_pointer_at_limit_faults() -> TestResult {
+    runtime_failure(
+        "\
+move sp 512
+push 1
+yield
+",
+        128,
+        ErrorCode::StackAddressOutOfRange,
+    )?;
 
     Ok(())
 }

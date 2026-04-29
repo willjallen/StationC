@@ -304,7 +304,7 @@ impl Vm {
             BinaryOperation::Sub => left - right,
             BinaryOperation::Mul => left * right,
             BinaryOperation::Div => left / right,
-            BinaryOperation::Mod => left.rem_euclid(right),
+            BinaryOperation::Mod => ic10_mod(left, right),
             BinaryOperation::Pow => left.powf(right),
             BinaryOperation::Max => left.max(right),
             BinaryOperation::Min => left.min(right),
@@ -587,6 +587,21 @@ fn approximately_zero(value: f64, tolerance: f64) -> bool {
 
 fn approximately_zero_without_epsilon_factor(value: f64, tolerance: f64) -> bool {
     value.abs() <= (tolerance * value.abs()).max(f64::EPSILON)
+}
+
+fn ic10_mod(left: f64, right: f64) -> f64 {
+    let divisor = right.abs();
+    let remainder = left % divisor;
+    if numeric_eq(remainder, 0.0) {
+        return 0.0;
+    }
+    if left < 0.0 {
+        remainder + divisor
+    } else if right < 0.0 {
+        2.0_f64.mul_add(-remainder, left)
+    } else {
+        remainder
+    }
 }
 
 const fn bool_to_number(value: bool) -> f64 {

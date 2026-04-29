@@ -40,7 +40,27 @@ yield
 }
 
 #[test]
-fn modulo_uses_euclidean_remainder() -> TestResult {
+fn modulo_matches_documented_examples() -> TestResult {
+    let output = run("\
+mod r0 10 20
+mod r1 22 20
+mod r2 -7 4
+mod r3 -7 9
+mod r4 22 -20
+mod r5 22 -10
+yield
+")?;
+
+    assert_register(&output.vm, 0, 10.0)?;
+    assert_register(&output.vm, 1, 2.0)?;
+    assert_register(&output.vm, 2, 1.0)?;
+    assert_register(&output.vm, 3, 2.0)?;
+    assert_register(&output.vm, 4, 18.0)?;
+    assert_register(&output.vm, 5, 18.0)
+}
+
+#[test]
+fn modulo_with_negative_divisor_uses_documented_complement() -> TestResult {
     let output = run("\
 mod r0 -7 4
 mod r1 22 -20
@@ -48,7 +68,7 @@ yield
 ")?;
 
     assert_register(&output.vm, 0, 1.0)?;
-    assert_register(&output.vm, 1, 2.0)
+    assert_register(&output.vm, 1, 18.0)
 }
 
 #[test]
@@ -100,6 +120,8 @@ yield
 #[test]
 fn trigonometric_identity_cases() -> TestResult {
     let output = run("\
+acos r5 1
+asin r6 0
 sin r0 0
 cos r1 0
 tan r2 0
@@ -112,7 +134,9 @@ yield
     assert_register(&output.vm, 1, 1.0)?;
     assert_register(&output.vm, 2, 0.0)?;
     assert_register(&output.vm, 3, 0.0)?;
-    assert_register(&output.vm, 4, 0.0)
+    assert_register(&output.vm, 4, 0.0)?;
+    assert_register(&output.vm, 5, 0.0)?;
+    assert_register(&output.vm, 6, 0.0)
 }
 
 #[test]

@@ -122,6 +122,18 @@ yield
 }
 
 #[test]
+fn chained_indirect_register_write_resolves_multiple_levels() -> TestResult {
+    let output = run("\
+move r1 2
+move r2 3
+move rrr1 4
+yield
+")?;
+
+    assert_register(&output.vm, 3, 4.0)
+}
+
+#[test]
 fn invalid_indirect_register_index_faults() -> TestResult {
     runtime_failure(
         "\
@@ -131,6 +143,48 @@ yield
 ",
         128,
         ErrorCode::InvalidIndirectRegisterIndex,
+    )?;
+
+    Ok(())
+}
+
+#[test]
+fn writable_return_address_can_be_used_as_jump_target() -> TestResult {
+    let output = run("\
+move ra 3
+j ra
+move r0 99
+move r0 7
+yield
+")?;
+
+    assert_register(&output.vm, 0, 7.0)?;
+    assert_pc(&output.vm, 5)
+}
+
+#[test]
+fn invalid_numeric_jump_target_faults() -> TestResult {
+    runtime_failure(
+        "\
+j 1.5
+yield
+",
+        128,
+        ErrorCode::InvalidNumericIndex,
+    )?;
+
+    Ok(())
+}
+
+#[test]
+fn out_of_range_jump_target_faults() -> TestResult {
+    runtime_failure(
+        "\
+j 99
+yield
+",
+        128,
+        ErrorCode::InvalidJumpTarget,
     )?;
 
     Ok(())

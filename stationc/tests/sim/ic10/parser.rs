@@ -50,6 +50,19 @@ yield
 }
 
 #[test]
+fn label_symbols_can_be_moved_as_numeric_values() -> TestResult {
+    let output = run("\
+move r0 done
+j done
+move r0 99
+done:
+yield
+")?;
+
+    assert_register(&output.vm, 0, 3.0)
+}
+
+#[test]
 fn trace_preserves_source_line_numbers() -> TestResult {
     let (_vm, tick) = run_traced("\n\nmove r0 1\nyield\n", 128)?;
 
@@ -122,6 +135,30 @@ define answer nope
 yield
 ",
         ErrorCode::DefineValueMustBeNumeric,
+        1,
+    )
+}
+
+#[test]
+fn invalid_destination_register_is_parse_error() -> TestResult {
+    parse_failure(
+        "\
+move nope 1
+yield
+",
+        ErrorCode::ExpectedRegister,
+        1,
+    )
+}
+
+#[test]
+fn invalid_register_number_is_parse_error() -> TestResult {
+    parse_failure(
+        "\
+move r16 1
+yield
+",
+        ErrorCode::ExpectedRegister,
         1,
     )
 }

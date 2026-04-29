@@ -13,6 +13,30 @@ yield
 }
 
 #[test]
+fn not_one_is_negative_two() -> TestResult {
+    let output = run("\
+not r0 1
+yield
+")?;
+
+    assert_register(&output.vm, 0, -2.0)
+}
+
+#[test]
+fn binary_literals_allow_underscore_separators() -> TestResult {
+    let output = run("\
+move r0 %0000_1111
+move r1 %1010_0101
+and r2 r0 r1
+yield
+")?;
+
+    assert_register(&output.vm, 0, 15.0)?;
+    assert_register(&output.vm, 1, 165.0)?;
+    assert_register(&output.vm, 2, 5.0)
+}
+
+#[test]
 fn bitwise_and_or_xor_and_nor() -> TestResult {
     let output = run("\
 and r0 6 3
@@ -61,6 +85,34 @@ yield
 ",
         128,
         ErrorCode::InvalidIntegerOperand,
+    )?;
+
+    Ok(())
+}
+
+#[test]
+fn negative_shift_operand_faults() -> TestResult {
+    runtime_failure(
+        "\
+sll r0 1 -1
+yield
+",
+        128,
+        ErrorCode::InvalidShiftOperand,
+    )?;
+
+    Ok(())
+}
+
+#[test]
+fn oversized_unsigned_shift_result_faults() -> TestResult {
+    runtime_failure(
+        "\
+srl r0 -1 1
+yield
+",
+        128,
+        ErrorCode::UnsignedIntegerNotExactlyRepresentable,
     )?;
 
     Ok(())

@@ -1,7 +1,7 @@
 use stationc::sim::ic10::StopReason;
 
 use super::support::{
-    TestResult, assert_pc, assert_ra, assert_register, assert_tick, run, run_with_budget,
+    TestResult, assert_pc, assert_ra, assert_register, assert_sp, assert_tick, run, run_with_budget,
 };
 
 #[test]
@@ -46,6 +46,28 @@ j ra
     assert_register(&output.vm, 0, 7.0)?;
     assert_register(&output.vm, 1, 1.0)?;
     assert_ra(&output.vm, 1.0)
+}
+
+#[test]
+fn nested_calls_can_save_and_restore_return_address_on_stack() -> TestResult {
+    let output = run("\
+jal outer
+move r0 7
+yield
+outer:
+push ra
+jal inner
+pop ra
+j ra
+inner:
+move r1 11
+j ra
+")?;
+
+    assert_register(&output.vm, 0, 7.0)?;
+    assert_register(&output.vm, 1, 11.0)?;
+    assert_ra(&output.vm, 1.0)?;
+    assert_sp(&output.vm, 0.0)
 }
 
 #[test]
@@ -139,6 +161,63 @@ yield
 }
 
 #[test]
+fn relative_comparison_branch_aliases_take_true_paths() -> TestResult {
+    let output = run("\
+move r0 0
+add r0 r0 1
+breq r0 1 2
+move r0 99
+add r0 r0 1
+brge r0 2 2
+move r0 99
+add r0 r0 1
+brgt r0 2 2
+move r0 99
+add r0 r0 1
+brle r0 4 2
+move r0 99
+add r0 r0 1
+brne r0 999 2
+move r0 99
+yield
+")?;
+
+    assert_register(&output.vm, 0, 5.0)
+}
+
+#[test]
+fn relative_zero_branch_aliases_take_true_paths() -> TestResult {
+    let output = run("\
+move r0 0
+breqz r0 2
+move r1 99
+add r1 r1 1
+brgez r0 2
+move r1 99
+add r1 r1 1
+move r0 1
+brgtz r0 2
+move r1 99
+add r1 r1 1
+move r0 0
+brlez r0 2
+move r1 99
+add r1 r1 1
+move r0 -1
+brltz r0 2
+move r1 99
+add r1 r1 1
+move r0 2
+brnez r0 2
+move r1 99
+add r1 r1 1
+yield
+")?;
+
+    assert_register(&output.vm, 1, 6.0)
+}
+
+#[test]
 fn relative_jump_can_skip_forward() -> TestResult {
     let output = run("\
 move r0 1
@@ -167,6 +246,34 @@ yield
 }
 
 #[test]
+fn zero_branch_and_link_variants_record_return_address() -> TestResult {
+    let output = run("\
+beqzal 0 linked
+move r0 99
+linked:
+move r0 ra
+yield
+")?;
+
+    assert_register(&output.vm, 0, 1.0)?;
+    assert_ra(&output.vm, 1.0)
+}
+
+#[test]
+fn ordering_branch_and_link_variants_record_return_address() -> TestResult {
+    let output = run("\
+bgtal 2 1 linked
+move r0 99
+linked:
+move r0 ra
+yield
+")?;
+
+    assert_register(&output.vm, 0, 1.0)?;
+    assert_ra(&output.vm, 1.0)
+}
+
+#[test]
 fn nan_branch_takes_nan_path() -> TestResult {
     let output = run("\
 move r0 0
@@ -178,6 +285,68 @@ yield
 ")?;
 
     assert_register(&output.vm, 0, 1.0)
+}
+
+#[test]
+fn approximate_branches_take_true_paths() -> TestResult {
+    let output = run("\
+move r0 0
+bap 100 101 0.02 ap
+move r0 99
+ap:
+add r0 r0 1
+bna 100 110 0.02 na
+move r0 99
+na:
+add r0 r0 1
+bapz 0 0 apz
+move r0 99
+apz:
+add r0 r0 1
+bnaz 2 0.5 naz
+move r0 99
+naz:
+add r0 r0 1
+yield
+")?;
+
+    assert_register(&output.vm, 0, 4.0)
+}
+
+#[test]
+fn relative_approximate_branches_take_true_paths() -> TestResult {
+    let output = run("\
+move r0 0
+brap 100 101 0.02 2
+move r0 99
+add r0 r0 1
+brna 100 110 0.02 2
+move r0 99
+add r0 r0 1
+brapz 0 0 2
+move r0 99
+add r0 r0 1
+brnaz 2 0.5 2
+move r0 99
+add r0 r0 1
+yield
+")?;
+
+    assert_register(&output.vm, 0, 4.0)
+}
+
+#[test]
+fn approximate_branch_and_link_variants_record_return_address() -> TestResult {
+    let output = run("\
+bapal 100 101 0.02 linked
+move r0 99
+linked:
+move r0 ra
+yield
+")?;
+
+    assert_register(&output.vm, 0, 1.0)?;
+    assert_ra(&output.vm, 1.0)
 }
 
 #[test]
