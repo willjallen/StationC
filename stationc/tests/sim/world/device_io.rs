@@ -1,6 +1,8 @@
 use stationc::sim::{
     ic10::{DevicePort, Error as Ic10Error, ErrorCode, Ic10, ReferenceId, StopReason},
-    world::{Device, World, WorldError},
+    world::{
+        Device, World, WorldAccessOperation, WorldAccessTarget, WorldDiagnosticKind, WorldError,
+    },
 };
 
 use super::support::{
@@ -117,6 +119,42 @@ yield
     world.tick()?;
 
     assert_housing_register(&world, housing, 1, 293.0)
+}
+
+#[test]
+fn repeated_device_logic_reads_are_traced_as_volatile_observations() -> TestResult {
+    let mut world = World::new();
+    let sensor = world.add_device(Device::new().with_logic("Temperature", 294.0));
+    let housing = world.add_ic10_housing(
+        "\
+l r0 d0 Temperature
+l r1 d0 Temperature
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, sensor)?;
+
+    let tick = world.tick()?;
+
+    assert_eq!(tick.access.len(), 2);
+    assert_eq!(tick.access[0].actor, housing);
+    assert_eq!(tick.access[0].operation, WorldAccessOperation::Read);
+    assert_eq!(
+        tick.access[0].target,
+        WorldAccessTarget::DeviceLogic {
+            reference_id: sensor,
+            field: "Temperature".to_owned(),
+        }
+    );
+    assert_eq!(
+        tick.diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.kind)
+            .collect::<Vec<_>>(),
+        vec![WorldDiagnosticKind::RepeatedVolatileRead]
+    );
+    assert_housing_register(&world, housing, 0, 294.0)?;
+    assert_housing_register(&world, housing, 1, 294.0)
 }
 
 #[test]

@@ -8,7 +8,10 @@ use super::{
     device::Device,
     device_logic,
     ic_housing::{IcHousing, PIN_COUNT},
-    tick::{IC10_INSTRUCTIONS_PER_TICK, Ic10TickResult, WorldTickResult},
+    tick::{
+        IC10_INSTRUCTIONS_PER_TICK, Ic10Schedule, Ic10TickResult, WorldAccessEvent,
+        WorldAccessOperation, WorldAccessTarget, WorldTickResult, diagnostics_for_access,
+    },
 };
 
 /// A deterministic world containing devices and IC housings.
@@ -16,6 +19,7 @@ use super::{
 pub struct World {
     tick: u64,
     next_reference_id: u32,
+    schedule: Ic10Schedule,
     devices: Vec<Device>,
     ic_housings: Vec<IcHousing>,
 }
@@ -27,6 +31,7 @@ impl World {
         Self {
             tick: 0,
             next_reference_id: 1,
+            schedule: Ic10Schedule::Stable,
             devices: Vec::new(),
             ic_housings: Vec::new(),
         }
@@ -36,6 +41,17 @@ impl World {
     #[must_use]
     pub const fn tick_count(&self) -> u64 {
         self.tick
+    }
+
+    /// Returns the IC10 scheduling mode used during world ticks.
+    #[must_use]
+    pub const fn ic10_schedule(&self) -> Ic10Schedule {
+        self.schedule
+    }
+
+    /// Sets the IC10 scheduling mode used during world ticks.
+    pub const fn set_ic10_schedule(&mut self, schedule: Ic10Schedule) {
+        self.schedule = schedule;
     }
 
     /// Adds a world device and returns its assigned `ReferenceId`.
@@ -135,9 +151,11 @@ impl World {
     pub fn tick_with_budget(&mut self, budget: u32) -> Result<WorldTickResult, WorldError> {
         let tick = self.tick;
         let mut ic10 = Vec::with_capacity(self.ic_housings.len());
+        let mut access = Vec::new();
         let housing_count = self.ic_housings.len();
+        let order = scheduled_indices(self.schedule, tick, housing_count);
 
-        for index in 0..housing_count {
+        for index in order {
             if !self.ic_housings[index].is_on() {
                 continue;
             }
@@ -151,6 +169,8 @@ impl World {
                     pins: housing.pins,
                     devices: &mut self.devices,
                     ic_housings: &mut self.ic_housings,
+                    tick,
+                    access: &mut access,
                 };
                 housing
                     .ic10
@@ -168,8 +188,14 @@ impl World {
             });
         }
 
+        let diagnostics = diagnostics_for_access(&access);
         self.tick = self.tick.saturating_add(1);
-        Ok(WorldTickResult { tick, ic10 })
+        Ok(WorldTickResult {
+            tick,
+            ic10,
+            access,
+            diagnostics,
+        })
     }
 
     const fn allocate_reference_id(&mut self) -> ReferenceId {
@@ -199,11 +225,25 @@ struct WorldIc10Context<'a> {
     pins: [Option<ReferenceId>; PIN_COUNT],
     devices: &'a mut [Device],
     ic_housings: &'a mut [IcHousing],
+    tick: u64,
+    access: &'a mut Vec<WorldAccessEvent>,
 }
 
 impl Ic10Environment for WorldIc10Context<'_> {
     fn load_logic(&mut self, target: DeviceTarget, field: &str) -> Result<f64, EnvironmentFault> {
-        self.resolve_device_mut(target)?.load_logic(field)
+        let reference_id = self.reference_id_for_target(target)?;
+        let value = {
+            let device = self.resolve_reference_mut(reference_id)?;
+            device.load_logic(field)?
+        };
+        self.record_access(
+            WorldAccessOperation::Read,
+            WorldAccessTarget::DeviceLogic {
+                reference_id,
+                field: field.to_owned(),
+            },
+        );
+        Ok(value)
     }
 
     fn store_logic(
@@ -212,11 +252,35 @@ impl Ic10Environment for WorldIc10Context<'_> {
         field: &str,
         value: f64,
     ) -> Result<(), EnvironmentFault> {
-        self.resolve_device_mut(target)?.store_logic(field, value)
+        let reference_id = self.reference_id_for_target(target)?;
+        {
+            let device = self.resolve_reference_mut(reference_id)?;
+            device.store_logic(field, value)?;
+        }
+        self.record_access(
+            WorldAccessOperation::Write,
+            WorldAccessTarget::DeviceLogic {
+                reference_id,
+                field: field.to_owned(),
+            },
+        );
+        Ok(())
     }
 
     fn get_stack(&mut self, target: DeviceTarget, address: usize) -> Result<f64, EnvironmentFault> {
-        self.resolve_device_mut(target)?.get_stack(address)
+        let reference_id = self.reference_id_for_target(target)?;
+        let value = {
+            let device = self.resolve_reference_mut(reference_id)?;
+            device.get_stack(address)?
+        };
+        self.record_access(
+            WorldAccessOperation::Read,
+            WorldAccessTarget::DeviceStack {
+                reference_id,
+                address,
+            },
+        );
+        Ok(value)
     }
 
     fn put_stack(
@@ -225,7 +289,19 @@ impl Ic10Environment for WorldIc10Context<'_> {
         address: usize,
         value: f64,
     ) -> Result<(), EnvironmentFault> {
-        self.resolve_device_mut(target)?.put_stack(address, value)
+        let reference_id = self.reference_id_for_target(target)?;
+        {
+            let device = self.resolve_reference_mut(reference_id)?;
+            device.put_stack(address, value)?;
+        }
+        self.record_access(
+            WorldAccessOperation::Write,
+            WorldAccessTarget::DeviceStack {
+                reference_id,
+                address,
+            },
+        );
+        Ok(())
     }
 
     fn should_suspend_execution(&self) -> bool {
@@ -236,14 +312,6 @@ impl Ic10Environment for WorldIc10Context<'_> {
 }
 
 impl WorldIc10Context<'_> {
-    fn resolve_device_mut(
-        &mut self,
-        target: DeviceTarget,
-    ) -> Result<&mut Device, EnvironmentFault> {
-        let reference_id = self.reference_id_for_target(target)?;
-        self.resolve_reference_mut(reference_id)
-    }
-
     fn reference_id_for_target(
         &self,
         target: DeviceTarget,
@@ -282,6 +350,41 @@ impl WorldIc10Context<'_> {
             return Ok(housing.device_mut());
         }
         Err(EnvironmentFault::UnknownReferenceId { reference_id })
+    }
+
+    fn record_access(&mut self, operation: WorldAccessOperation, target: WorldAccessTarget) {
+        self.access.push(WorldAccessEvent {
+            tick: self.tick,
+            actor: self.current_reference_id,
+            operation,
+            target,
+        });
+    }
+}
+
+fn scheduled_indices(schedule: Ic10Schedule, tick: u64, count: usize) -> Vec<usize> {
+    let mut indices: Vec<usize> = (0..count).collect();
+    match schedule {
+        Ic10Schedule::Rotating if count > 0 => {
+            let count = u64::try_from(count).unwrap_or(u64::MAX);
+            let offset = usize::try_from(tick % count).unwrap_or(0);
+            indices.rotate_left(offset);
+        }
+        Ic10Schedule::Stable | Ic10Schedule::Rotating => {}
+        Ic10Schedule::SeededShuffle { seed } => shuffle_indices(&mut indices, seed, tick),
+    }
+    indices
+}
+
+fn shuffle_indices(indices: &mut [usize], seed: u64, tick: u64) {
+    let mut state = seed ^ tick.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    for index in (1..indices.len()).rev() {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        let modulus = u64::try_from(index + 1).unwrap_or(u64::MAX);
+        let swap_index = usize::try_from(state % modulus).unwrap_or(0);
+        indices.swap(index, swap_index);
     }
 }
 

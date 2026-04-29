@@ -97,6 +97,14 @@ So, nominally:
 
 This is not enough to run a normal high-level language directly. A single IC10 chip cannot contain a large source program, cannot execute many instructions per second, and cannot hold much local memory. However, the constraints are per-chip. If a system has 32 worker ICs, then it has 32 independent instruction budgets and 32 independent stacks. The project exploits that.
 
+The safest scheduling model for StationC is: each active IC10 receives a
+per-chip tick slice, but the order between chips is not part of the language
+contract. Public knowledge strongly suggests IC10 chips are not instruction-
+interleaved with each other and are not intentionally run as a distributed
+thread pool. The practical model is sequential tick slices in an unspecified
+internal order. StationC must therefore exploit per-chip throughput without
+depending on one IC10 housing running before another.
+
 ---
 
 ## 5. Important vanilla affordances
@@ -461,7 +469,6 @@ unions
 varargs
 malloc/free
 standard libc
-volatile
 full C pointer arithmetic
 function pointers
 ```
@@ -474,6 +481,12 @@ discover_named("StructureGasSensor", "Farm")
 ```
 
 The compiler should hash them or map them to runtime constants.
+
+The C `volatile` keyword itself is not part of the MVP source language.
+StationC still has volatile-like operations: `device_read`, `device_write`,
+`batch_read`, `batch_write`, and other world-facing calls are effectful
+operations. The compiler must not remove, merge, hoist, sink, or reorder those
+operations as if they were ordinary memory loads and stores.
 
 ---
 
@@ -522,7 +535,17 @@ Shared state is visible to host and workers, but access must be controlled by th
 shared float WorkerResults[64];
 ```
 
-For MVP safety, workers should generally write only to exclusive result slots assigned by the host. Avoid concurrent writes to the same memory cell.
+For MVP safety, workers should write only to exclusive result slots assigned by
+the host. Defined StationC behavior requires one of:
+
+1. Exclusive ownership of the memory range for the duration of the job.
+2. A runtime-mediated protocol such as a command buffer, mailbox state machine,
+   or host-owned scheduler field.
+3. A future explicit unsafe escape hatch for raw shared mutation.
+
+Concurrent unsynchronized writes, and read-modify-write protocols over shared
+cells, are outside the defined StationC memory model. The compiler must not emit
+code that depends on those races resolving in a particular inter-IC order.
 
 ---
 
@@ -561,6 +584,34 @@ void batch_write(DeviceGroup group, LogicField field, float value);
 ```
 
 The runtime implements discovery by scanning the data network with `get db:0 index`, reading each discovered device’s `ReferenceId`, then reading `PrefabHash` and `NameHash` to classify it. The Advanced IC10 docs describe this exact network-index-to-ReferenceId technique and explain that the returned `ReferenceId` can then be used to query `PrefabHash` and other logic properties. ([stationeers-wiki.com][5])
+
+Device and batch reads are volatile world observations. Each call observes the
+target at the moment that IC10 instruction executes. Repeating the same read may
+produce a different value if the world, another IC, or the device itself has
+changed. This is legal, but programmers and compiler passes must not assume
+that repeated device reads are stable.
+
+Suspicious:
+
+```c
+if (device_read(sensor, Temperature) > 300 &&
+    device_read(sensor, Temperature) < 310)
+{
+    device_write(cooler, On, 1);
+}
+```
+
+The two `device_read` calls are two separate volatile observations. If the
+program wants a coherent sample, it should read once and reuse the local value:
+
+```c
+float temperature = device_read(sensor, Temperature);
+
+if (temperature > 300 && temperature < 310)
+{
+    device_write(cooler, On, 1);
+}
+```
 
 ---
 
@@ -1124,6 +1175,12 @@ The compiler emits host bytecode that creates `jobCount` job records, all pointi
 
 The runtime should pursue parallelism aggressively, but safely.
 
+Parallelism means independent IC10 tick slices and independent jobs, not a
+guaranteed shared-memory thread model. StationC must treat inter-IC execution
+order as unspecified. A program is correct only if any valid ordering of active
+worker slices produces the same StationC-visible result, except for explicitly
+volatile world observations.
+
 There are three levels of parallelism:
 
 ### 23.1 Data parallel kernels
@@ -1179,6 +1236,10 @@ YIELD
 The Steam discussion notes that after turning on a device, a script may need to wait at least one world simulation tick before reading updated data; the same thread recommends yielding to allow device state to update. ([Steam Community][6])
 
 Therefore the runtime should not try to “spin faster than the world.” It should use intra-tick instruction budgets for computation and inter-tick phases for world interaction.
+
+Within one phase, external world reads should be treated as samples, not cached
+facts. The compiler may reuse a value only after it has been stored in a
+StationC local, temporary, or runtime-owned snapshot buffer.
 
 ---
 
@@ -1733,6 +1794,31 @@ simple external device behavior
 
 The world tick loop should run each active IC10 chip for up to 128 instructions or until it yields, then advance the subset of device logic needed by the scenario. The first world simulator does not need to perfectly emulate Stationeers. It needs to be deterministic, inspectable, and accurate enough to test firmware assumptions about timing, stacks, devices, and multi-chip communication.
 
+The default world simulator should use a stable sequential IC10 order for
+repeatable tests. It should also support alternative deterministic schedules
+such as rotating order and seeded shuffle order. Those modes are not claims
+about the exact game implementation; they are tools for finding firmware and
+compiler assumptions that accidentally depend on a particular inter-IC order.
+
+The world simulator should trace world-facing accesses:
+
+```text
+tick
+actor IC ReferenceId
+operation: read or write
+target: device logic field or device stack address
+```
+
+Debug diagnostics should flag at least:
+
+1. Multiple writes to the same world target in one tick.
+2. Read/write overlap on the same world target in one tick.
+3. Repeated volatile reads of the same logic field by the same IC in one tick.
+
+These diagnostics are warnings for simulator and compiler development. They do
+not mean every repeated read is forbidden; they identify code that needs an
+explicit sampling decision.
+
 Standalone command:
 
 ```bash
@@ -1769,6 +1855,7 @@ trace job execution
 count VM instructions
 estimate IC10 instruction budget
 detect races in shared writes
+detect volatile read patterns that look like accidental repeated samples
 ```
 
 StationOS command:

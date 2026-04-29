@@ -106,6 +106,11 @@ alias MyAlias r0 # This comment is ignored.
 does not run forever in a single tick. A practical execution budget is about 128
 script lines before the IC pauses for a tick.
 
+That budget is per IC housing, not a global budget shared by every IC in the
+world. Multiple ICs can therefore execute more total IC10 instructions per tick
+than one IC. Do not rely on the order in which different IC housings run. Treat
+inter-IC order as unspecified, even if it appears stable in one save.
+
 Most useful IC10 scripts are loops:
 
 ```ic10

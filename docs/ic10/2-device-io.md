@@ -61,6 +61,17 @@ Not every device supports every logic value. If a device does not have the
 requested value, the IC will report an error. The Stationpedia and configuration
 cartridge are the practical way to discover valid values for a specific device.
 
+Each load is an observation of world state at the moment the instruction runs.
+If a script reads the same field twice, it has made two reads:
+
+```ic10
+l r0 d0 Temperature
+l r1 d0 Temperature
+```
+
+For a coherent sample, read once and reuse the register value for the rest of
+that calculation.
+
 ## Slot Load and Store
 
 Some devices expose slots. Use `ls` and `ss` for slot logic values.

@@ -1,6 +1,6 @@
 use stationc::sim::{
     ic10::{DevicePort, StopReason},
-    world::{Device, IC10_INSTRUCTIONS_PER_TICK, World},
+    world::{Device, IC10_INSTRUCTIONS_PER_TICK, Ic10Schedule, World},
 };
 
 use super::support::{
@@ -70,6 +70,36 @@ yield
     assert_tick(tick.ic10[1].tick, 3, StopReason::Yield)?;
     assert_housing_register(&world, first, 0, 1.0)?;
     assert_housing_register(&world, second, 0, 15.0)
+}
+
+#[test]
+fn rotating_schedule_changes_ic10_tick_order() -> TestResult {
+    let mut world = World::new();
+    world.set_ic10_schedule(Ic10Schedule::Rotating);
+    let first = world.add_ic10_housing("yield")?;
+    let second = world.add_ic10_housing("yield")?;
+    let third = world.add_ic10_housing("yield")?;
+
+    let first_tick = world.tick()?;
+    let second_tick = world.tick()?;
+
+    assert_eq!(
+        first_tick
+            .ic10
+            .iter()
+            .map(|result| result.reference_id)
+            .collect::<Vec<_>>(),
+        vec![first, second, third]
+    );
+    assert_eq!(
+        second_tick
+            .ic10
+            .iter()
+            .map(|result| result.reference_id)
+            .collect::<Vec<_>>(),
+        vec![second, third, first]
+    );
+    Ok(())
 }
 
 #[test]
