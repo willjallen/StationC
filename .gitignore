@@ -1,5 +1,6 @@
 # Rust
 /target/
+**/target/
 **/*.rs.bk
 *.pdb
 
@@ -81,4 +82,3 @@ temp/
 *.tar
 *.tgz
 *.zip
-

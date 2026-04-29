@@ -1,0 +1,34 @@
+[package]
+name = "stationc"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+
+[lints.rust]
+future_incompatible = { level = "deny", priority = -1 }
+missing_debug_implementations = "deny"
+missing_docs = "deny"
+nonstandard_style = { level = "deny", priority = -1 }
+rust_2018_idioms = { level = "deny", priority = -1 }
+unsafe_code = "forbid"
+unused = { level = "deny", priority = -1 }
+warnings = "deny"
+
+[lints.rustdoc]
+bare_urls = "deny"
+broken_intra_doc_links = "deny"
+missing_crate_level_docs = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+dbg_macro = "deny"
+expect_used = "deny"
+nursery = { level = "deny", priority = -1 }
+panic = "deny"
+pedantic = { level = "deny", priority = -1 }
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"
