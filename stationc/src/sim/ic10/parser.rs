@@ -7,8 +7,9 @@ use super::{
     instruction::{
         ApproxOperation, ApproxZeroOperation, BinaryOperation, BranchCondition, CompareOperation,
         CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction, JumpTarget,
-        ProgramInstruction, TernaryOperation, UnaryOperation, ValueOperand,
+        LogicFieldOperand, ProgramInstruction, TernaryOperation, UnaryOperation, ValueOperand,
     },
+    logic_types,
     program::Program,
     registers::{RegisterIndex, RegisterRef},
 };
@@ -389,7 +390,7 @@ fn parse_load_logic_instruction(
     Ok(Instruction::LoadLogic {
         destination: parse_register(tokens[1], context)?,
         device,
-        field: tokens[3].to_owned(),
+        field: parse_logic_field(tokens[3], context),
     })
 }
 
@@ -401,7 +402,7 @@ fn parse_store_logic_instruction(
     let device = parse_load_or_store_device(tokens[0], tokens[1], context);
     Ok(Instruction::StoreLogic {
         device,
-        field: tokens[2].to_owned(),
+        field: parse_logic_field(tokens[2], context),
         value: parse_value(tokens[3], context),
     })
 }
@@ -797,6 +798,21 @@ fn parse_non_register_value(token: &str, constants: &HashMap<String, f64>) -> Va
     )
 }
 
+fn parse_logic_field(token: &str, context: ParseContext<'_>) -> LogicFieldOperand {
+    if is_dynamic_logic_field(token, context) {
+        LogicFieldOperand::Dynamic(parse_value(token, context))
+    } else {
+        LogicFieldOperand::Named(token.to_owned())
+    }
+}
+
+fn is_dynamic_logic_field(token: &str, context: ParseContext<'_>) -> bool {
+    matches!(context.aliases.get(token), Some(AliasTarget::Register(_)))
+        || parse_register_token(token).is_some()
+        || context.constants.contains_key(token)
+        || parse_number(token).is_some()
+}
+
 fn parse_jump_target(token: &str, context: ParseContext<'_>) -> JumpTarget {
     match context.aliases.get(token).copied() {
         Some(AliasTarget::Register(register)) => JumpTarget::Register(register),
@@ -872,7 +888,7 @@ fn parse_number(token: &str) -> Option<f64> {
         "nan" => Some(f64::NAN),
         "pinf" => Some(f64::INFINITY),
         "ninf" => Some(f64::NEG_INFINITY),
-        _ => parse_numeric_literal(token),
+        _ => parse_numeric_literal(token).or_else(|| logic_types::value_from_symbol(token)),
     }
 }
 

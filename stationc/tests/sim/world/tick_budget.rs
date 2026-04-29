@@ -73,6 +73,44 @@ yield
 }
 
 #[test]
+fn powered_off_ic_housing_does_not_resume_on_next_world_tick() -> TestResult {
+    let mut world = World::new();
+    let housing_id = world.add_ic10_housing(
+        "\
+s db On 0
+move r0 99
+yield
+",
+    )?;
+
+    let first_tick = world.tick()?;
+
+    assert_tick(first_tick.ic10[0].tick, 1, StopReason::Disabled)?;
+    assert_housing_logic(housing(&world, housing_id)?, "On", 0.0)?;
+    assert_housing_register(&world, housing_id, 0, 0.0)?;
+    assert_eq!(housing(&world, housing_id)?.ic10().program_counter(), 1);
+
+    let second_tick = world.tick()?;
+
+    assert!(second_tick.ic10.is_empty());
+    assert_housing_register(&world, housing_id, 0, 0.0)?;
+    assert_eq!(housing(&world, housing_id)?.ic10().program_counter(), 1);
+
+    world
+        .ic10_housing_mut(housing_id)
+        .ok_or_else(|| std::io::Error::other("housing exists"))?
+        .device_mut()
+        .set_logic("On", 1.0);
+
+    let third_tick = world.tick()?;
+
+    assert_tick(third_tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_housing_register(&world, housing_id, 0, 99.0)?;
+    assert_eq!(housing(&world, housing_id)?.ic10().program_counter(), 3);
+    Ok(())
+}
+
+#[test]
 fn db_targets_the_current_ic_housing_body() -> TestResult {
     let mut world = World::new();
     let housing_id = world.add_ic10_housing(

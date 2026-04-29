@@ -73,11 +73,11 @@ pub(super) enum Instruction {
     LoadLogic {
         destination: RegisterRef,
         device: DeviceOperand,
-        field: String,
+        field: LogicFieldOperand,
     },
     StoreLogic {
         device: DeviceOperand,
-        field: String,
+        field: LogicFieldOperand,
         value: ValueOperand,
     },
     GetStack {
@@ -110,6 +110,12 @@ pub(super) enum JumpTarget {
 pub(super) enum DeviceOperand {
     Port(DevicePortOperand),
     Reference(ValueOperand),
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum LogicFieldOperand {
+    Named(String),
+    Dynamic(ValueOperand),
 }
 
 #[derive(Debug, Clone, Copy)]

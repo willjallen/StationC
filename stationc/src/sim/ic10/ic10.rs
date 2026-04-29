@@ -9,8 +9,9 @@ use super::{
     instruction::{
         ApproxOperation, ApproxZeroOperation, BinaryOperation, BranchCondition, CompareOperation,
         CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction, JumpTarget,
-        TernaryOperation, UnaryOperation, ValueOperand,
+        LogicFieldOperand, TernaryOperation, UnaryOperation, ValueOperand,
     },
+    logic_types,
     program::Program,
     registers::{RegisterFault, RegisterRef, Registers},
     stack::{Stack, StackFault},
@@ -68,6 +69,13 @@ impl Ic10 {
         for _ in 0..budget {
             match self.step(trace, environment)? {
                 StepStop::Continue => instructions_executed += 1,
+                StepStop::Disabled => {
+                    instructions_executed += 1;
+                    return Ok(RunResult {
+                        instructions_executed,
+                        stop: RunStop::Disabled,
+                    });
+                }
                 StepStop::Yielded => {
                     instructions_executed += 1;
                     return Ok(RunResult {
@@ -296,25 +304,27 @@ impl Ic10 {
         environment: &mut E,
         destination: RegisterRef,
         device: &DeviceOperand,
-        field: &str,
+        field: &LogicFieldOperand,
     ) -> Result<StepStop, Ic10Fault> {
         let target = self.device_target(device)?;
+        let field = self.logic_field(field)?;
         let value = environment.load_logic(target, field)?;
         self.write(destination, value)?;
-        Ok(StepStop::Continue)
+        Ok(step_stop(environment))
     }
 
     fn execute_store_logic<E: Ic10Environment>(
         &self,
         environment: &mut E,
         device: &DeviceOperand,
-        field: &str,
+        field: &LogicFieldOperand,
         value: &ValueOperand,
     ) -> Result<StepStop, Ic10Fault> {
         let target = self.device_target(device)?;
+        let field = self.logic_field(field)?;
         let value = self.value(value)?;
         environment.store_logic(target, field, value)?;
-        Ok(StepStop::Continue)
+        Ok(step_stop(environment))
     }
 
     fn execute_get_stack<E: Ic10Environment>(
@@ -354,6 +364,16 @@ impl Ic10 {
                 .constant(symbol)
                 .or_else(|| self.program.label(symbol).and_then(usize_to_f64))
                 .ok_or_else(|| Ic10Fault::UnknownSymbol(symbol.clone())),
+        }
+    }
+
+    fn logic_field<'a>(&self, operand: &'a LogicFieldOperand) -> Result<&'a str, Ic10Fault> {
+        match operand {
+            LogicFieldOperand::Named(field) => Ok(field),
+            LogicFieldOperand::Dynamic(value) => {
+                let value = self.value(value)?;
+                logic_types::name_from_value(value).ok_or(Ic10Fault::UnknownLogicType(value))
+            }
         }
     }
 
@@ -567,6 +587,7 @@ impl Ic10 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StepStop {
     Continue,
+    Disabled,
     Yielded,
     Halted,
 }
@@ -574,6 +595,7 @@ enum StepStop {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RunStop {
     Yielded,
+    Disabled,
     BudgetExhausted,
     Halted,
 }
@@ -582,6 +604,7 @@ impl fmt::Display for RunStop {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Yielded => formatter.write_str("yield"),
+            Self::Disabled => formatter.write_str("disabled"),
             Self::BudgetExhausted => formatter.write_str("budget"),
             Self::Halted => formatter.write_str("halt"),
         }
@@ -597,6 +620,7 @@ pub(super) struct RunResult {
 #[derive(Debug)]
 pub(super) enum Ic10Fault {
     UnknownSymbol(String),
+    UnknownLogicType(f64),
     InvalidJumpTarget(usize),
     ProgramCounterTooLarge(usize),
     InvalidNumericIndex(f64),
@@ -617,6 +641,7 @@ impl fmt::Display for Ic10Fault {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownSymbol(symbol) => write!(formatter, "unknown symbol `{symbol}`"),
+            Self::UnknownLogicType(value) => write!(formatter, "unknown logic type `{value}`"),
             Self::InvalidJumpTarget(target) => write!(formatter, "invalid jump target `{target}`"),
             Self::ProgramCounterTooLarge(pc) => {
                 write!(formatter, "program counter too large: {pc}")
@@ -674,6 +699,14 @@ impl From<StackFault> for Ic10Fault {
 impl From<EnvironmentFault> for Ic10Fault {
     fn from(value: EnvironmentFault) -> Self {
         Self::Environment(value)
+    }
+}
+
+fn step_stop<E: Ic10Environment>(environment: &E) -> StepStop {
+    if environment.should_suspend_execution() {
+        StepStop::Disabled
+    } else {
+        StepStop::Continue
     }
 }
 

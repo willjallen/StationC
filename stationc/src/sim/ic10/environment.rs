@@ -221,6 +221,12 @@ pub trait Ic10Environment {
         address: usize,
         value: f64,
     ) -> Result<(), EnvironmentFault>;
+
+    /// Returns whether execution should suspend after the current instruction.
+    #[must_use]
+    fn should_suspend_execution(&self) -> bool {
+        false
+    }
 }
 
 /// Environment used by standalone IC10 execution.

@@ -6,6 +6,7 @@ use crate::sim::ic10::{DevicePort, DeviceTarget, EnvironmentFault, Ic10Environme
 
 use super::{
     device::Device,
+    device_logic,
     ic_housing::{IcHousing, PIN_COUNT},
     tick::{IC10_INSTRUCTIONS_PER_TICK, Ic10TickResult, WorldTickResult},
 };
@@ -137,6 +138,10 @@ impl World {
         let housing_count = self.ic_housings.len();
 
         for index in 0..housing_count {
+            if !self.ic_housings[index].is_on() {
+                continue;
+            }
+
             let mut housing = self.ic_housings.remove(index);
             let reference_id = housing.reference_id();
             let result = {
@@ -221,6 +226,12 @@ impl Ic10Environment for WorldIc10Context<'_> {
         value: f64,
     ) -> Result<(), EnvironmentFault> {
         self.resolve_device_mut(target)?.put_stack(address, value)
+    }
+
+    fn should_suspend_execution(&self) -> bool {
+        self.current_device
+            .logic(device_logic::ON)
+            .is_some_and(|value| value < 1.0)
     }
 }
 

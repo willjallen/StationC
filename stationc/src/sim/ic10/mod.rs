@@ -4,6 +4,7 @@ mod environment;
 #[allow(clippy::module_inception)]
 mod ic10;
 mod instruction;
+mod logic_types;
 mod parser;
 mod program;
 mod registers;
@@ -210,6 +211,8 @@ pub struct TracedTickResult {
 pub enum StopReason {
     /// The program executed `yield`.
     Yield,
+    /// The world environment suspended execution, such as when an IC housing is turned off.
+    Disabled,
     /// The instruction budget was exhausted.
     Budget,
     /// The program counter reached the end of the program.
@@ -220,6 +223,7 @@ impl From<RunStop> for StopReason {
     fn from(value: RunStop) -> Self {
         match value {
             RunStop::Yielded => Self::Yield,
+            RunStop::Disabled => Self::Disabled,
             RunStop::BudgetExhausted => Self::Budget,
             RunStop::Halted => Self::Halt,
         }
@@ -245,6 +249,8 @@ pub enum ErrorCode {
     ExpectedRegister,
     /// A symbol was referenced but not defined.
     UnknownSymbol,
+    /// A numeric logic type did not resolve to a known logic field.
+    UnknownLogicType,
     /// A jump target resolved outside the valid program range.
     InvalidJumpTarget,
     /// The program counter exceeded the representable range.
@@ -358,6 +364,7 @@ impl From<ic10::Ic10Fault> for Error {
 const fn ic10_fault_code(error: &ic10::Ic10Fault) -> ErrorCode {
     match error {
         ic10::Ic10Fault::UnknownSymbol(_) => ErrorCode::UnknownSymbol,
+        ic10::Ic10Fault::UnknownLogicType(_) => ErrorCode::UnknownLogicType,
         ic10::Ic10Fault::InvalidJumpTarget(_) => ErrorCode::InvalidJumpTarget,
         ic10::Ic10Fault::ProgramCounterTooLarge(_) => ErrorCode::ProgramCounterTooLarge,
         ic10::Ic10Fault::InvalidNumericIndex(_) => ErrorCode::InvalidNumericIndex,

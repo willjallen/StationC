@@ -120,6 +120,29 @@ yield
 }
 
 #[test]
+fn register_valued_logic_type_selects_device_field() -> TestResult {
+    let mut world = World::new();
+    let sensor = world.add_device(
+        Device::new()
+            .with_logic("Pressure", 101.3)
+            .with_logic("Temperature", 296.15),
+    );
+    let housing = world.add_ic10_housing(
+        "\
+move r15 LogicType.Temperature
+l r0 d0 r15
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, sensor)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 3, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, 296.15)
+}
+
+#[test]
 fn invalid_indirect_device_pin_index_is_typed_runtime_error() -> TestResult {
     let mut world = World::new();
     world.add_ic10_housing(

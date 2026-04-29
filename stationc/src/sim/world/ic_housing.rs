@@ -3,6 +3,7 @@
 use crate::sim::ic10::{DevicePort, Error, Ic10, ReferenceId};
 
 use super::device::Device;
+use super::device_logic;
 
 pub(super) const PIN_COUNT: usize = 6;
 
@@ -68,5 +69,11 @@ impl IcHousing {
         if let Some(index) = port.pin_index() {
             self.pins[index] = Some(target);
         }
+    }
+
+    pub(super) fn is_on(&self) -> bool {
+        self.device
+            .logic(device_logic::ON)
+            .is_none_or(|value| value >= 1.0)
     }
 }
