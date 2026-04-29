@@ -288,6 +288,38 @@ yield
 }
 
 #[test]
+fn relative_nan_branch_takes_nan_path() -> TestResult {
+    let output = run("\
+move r0 0
+brnan nan 2
+move r0 99
+move r0 1
+yield
+")?;
+
+    assert_register(&output.ic10, 0, 1.0)
+}
+
+#[test]
+fn branches_leave_program_counter_on_false_conditions() -> TestResult {
+    let output = run("\
+move r0 0
+beq 1 2 failed
+add r0 r0 1
+bap 100 110 0.01 failed
+add r0 r0 1
+bnan 4 failed
+add r0 r0 1
+yield
+failed:
+move r0 99
+yield
+")?;
+
+    assert_register(&output.ic10, 0, 3.0)
+}
+
+#[test]
 fn approximate_branches_take_true_paths() -> TestResult {
     let output = run("\
 move r0 0
@@ -311,6 +343,30 @@ yield
 ")?;
 
     assert_register(&output.ic10, 0, 4.0)
+}
+
+#[test]
+fn remaining_approximate_branch_and_link_variants_record_return_address() -> TestResult {
+    let output = run("\
+bnaal 100 110 0.02 first
+move r0 99
+first:
+move r0 ra
+bapzal 0 0 second
+move r1 99
+second:
+move r1 ra
+bnazal 2 0.5 third
+move r2 99
+third:
+move r2 ra
+yield
+")?;
+
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_register(&output.ic10, 1, 4.0)?;
+    assert_register(&output.ic10, 2, 7.0)?;
+    assert_ra(&output.ic10, 7.0)
 }
 
 #[test]

@@ -61,6 +61,43 @@ yield
 }
 
 #[test]
+fn manual_stack_pointer_can_traverse_upward_with_peek() -> TestResult {
+    let output = run("\
+poke 2 10
+poke 3 20
+poke 4 30
+move sp 3
+loop:
+peek r1
+add r0 r0 r1
+add sp sp 1
+ble sp 5 loop
+yield
+")?;
+
+    assert_register(&output.ic10, 0, 60.0)?;
+    assert_sp(&output.ic10, 6.0)
+}
+
+#[test]
+fn manual_stack_pointer_can_traverse_downward_with_pop() -> TestResult {
+    let output = run("\
+poke 2 10
+poke 3 20
+poke 4 30
+move sp 5
+loop:
+pop r1
+add r0 r0 r1
+bgt sp 2 loop
+yield
+")?;
+
+    assert_register(&output.ic10, 0, 60.0)?;
+    assert_sp(&output.ic10, 2.0)
+}
+
+#[test]
 fn pop_empty_stack_faults() -> TestResult {
     runtime_failure(
         "\

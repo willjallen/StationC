@@ -76,6 +76,32 @@ yield
 }
 
 #[test]
+fn direct_reference_access_accepts_literal_register_and_hex_ids() -> TestResult {
+    let mut world = World::new();
+    let sensor = world.add_device(Device::new().with_logic("Temperature", 302.0));
+    let light = world.add_device(Device::new().with_logic("On", 0.0));
+    let light_hex = format!("${:X}", light.value());
+    let housing = world.add_ic10_housing(&format!(
+        "\
+move r0 {}
+ld r1 {} Temperature
+sd r0 On 1
+ld r2 {light_hex} On
+yield
+",
+        light.value(),
+        sensor.value()
+    ))?;
+
+    world.tick()?;
+
+    assert_housing_register(&world, housing, 0, light.as_f64())?;
+    assert_housing_register(&world, housing, 1, 302.0)?;
+    assert_housing_register(&world, housing, 2, 1.0)?;
+    assert_device_logic(&world, light, "On", 1.0)
+}
+
+#[test]
 fn device_indirection_uses_register_value_as_pin_index() -> TestResult {
     let mut world = World::new();
     let sensor = world.add_device(Device::new().with_logic("Temperature", 293.0));
@@ -94,6 +120,47 @@ yield
 }
 
 #[test]
+fn invalid_indirect_device_pin_index_is_typed_runtime_error() -> TestResult {
+    let mut world = World::new();
+    world.add_ic10_housing(
+        "\
+move r0 6
+l r1 dr0 Temperature
+yield
+",
+    )?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::InvalidDevicePortIndex)
+}
+
+#[test]
+fn upper_direct_device_pins_can_load_and_store_logic() -> TestResult {
+    let mut world = World::new();
+    let sensor = world.add_device(Device::new().with_logic("Temperature", 303.0));
+    let switch = world.add_device(Device::new().with_logic("On", 0.0));
+    let display = world.add_device(Device::new().with_logic("Setting", 0.0));
+    let housing = world.add_ic10_housing(
+        "\
+l r0 d3 Temperature
+s d4 On 1
+s d5 Setting r0
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D3, sensor)?;
+    world.connect_pin(housing, DevicePort::D4, switch)?;
+    world.connect_pin(housing, DevicePort::D5, display)?;
+
+    world.tick()?;
+
+    assert_housing_register(&world, housing, 0, 303.0)?;
+    assert_device_logic(&world, switch, "On", 1.0)?;
+    assert_device_logic(&world, display, "Setting", 303.0)
+}
+
+#[test]
 fn unbound_device_pin_is_typed_runtime_error() -> TestResult {
     let mut world = World::new();
     world.add_ic10_housing(
@@ -106,6 +173,40 @@ yield
     let error = tick_error(&mut world)?;
 
     assert_ic10_error_code(error, ErrorCode::DevicePortUnbound)
+}
+
+#[test]
+fn unknown_logic_field_on_load_is_typed_runtime_error() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(Device::new().with_logic("On", 0.0));
+    let housing = world.add_ic10_housing(
+        "\
+l r0 d0 Temperature
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::UnknownLogicField)
+}
+
+#[test]
+fn unknown_logic_field_on_store_is_typed_runtime_error() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(Device::new().with_logic("On", 0.0));
+    let housing = world.add_ic10_housing(
+        "\
+s d0 Temperature 300
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::UnknownLogicField)
 }
 
 #[test]
@@ -153,6 +254,74 @@ yield
     let error = tick_error(&mut world)?;
 
     assert_ic10_error_code(error, ErrorCode::ReadOnlyLogicField)
+}
+
+#[test]
+fn get_device_stack_out_of_range_is_typed_runtime_error() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(Device::new().with_logic("On", 0.0));
+    let housing = world.add_ic10_housing(
+        "\
+get r0 d0 512
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::DeviceStackAddressOutOfRange)
+}
+
+#[test]
+fn put_device_stack_out_of_range_is_typed_runtime_error() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(Device::new().with_logic("On", 0.0));
+    let housing = world.add_ic10_housing(
+        "\
+put d0 512 1
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::DeviceStackAddressOutOfRange)
+}
+
+#[test]
+fn getd_fractional_stack_address_is_invalid_numeric_index() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(Device::new().with_logic("On", 0.0));
+    world.add_ic10_housing(&format!(
+        "\
+getd r0 {} 1.5
+yield
+",
+        device.value()
+    ))?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::InvalidNumericIndex)
+}
+
+#[test]
+fn putd_negative_stack_address_is_invalid_numeric_index() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(Device::new().with_logic("On", 0.0));
+    world.add_ic10_housing(&format!(
+        "\
+putd {} -1 1
+yield
+",
+        device.value()
+    ))?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::InvalidNumericIndex)
 }
 
 #[test]
