@@ -1,0 +1,84 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Keep Cargo.lock tracked by default. Rust applications should commit it;
+# libraries can opt out explicitly if needed.
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging and build outputs
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+wheelhouse/
+
+# Coverage and reports
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.cache/
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS and filesystem artifacts
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Archives
+*.7z
+*.gz
+*.rar
+*.tar
+*.tgz
+*.zip
+
