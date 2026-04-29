@@ -3,20 +3,15 @@
 use std::{collections::HashMap, fmt};
 
 use super::{
+    environment::DevicePort,
     instruction::{
         ApproxOperation, ApproxZeroOperation, BinaryOperation, BranchCondition, CompareOperation,
-        CompareZeroOperation, Instruction, JumpTarget, ProgramInstruction, TernaryOperation,
-        UnaryOperation, ValueOperand,
+        CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction, JumpTarget,
+        ProgramInstruction, TernaryOperation, UnaryOperation, ValueOperand,
     },
     program::Program,
-    registers::RegisterRef,
+    registers::{RegisterIndex, RegisterRef},
 };
-
-#[derive(Debug, Clone, Copy)]
-struct BranchFlags {
-    link: bool,
-    relative: bool,
-}
 
 #[derive(Debug)]
 pub(super) struct ParseError {
@@ -47,19 +42,75 @@ impl ParseError {
     }
 }
 
+impl fmt::Display for ParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "line {}: {}", self.line, self.message)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ParseErrorCode {
     DuplicateLabel,
     WrongArity,
-    AliasTargetMustBeRegister,
+    AliasTargetMustBeRegisterOrDevice,
     DefineValueMustBeNumeric,
     UnsupportedInstruction,
     ExpectedRegister,
 }
 
-impl fmt::Display for ParseError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "line {}: {}", self.line, self.message)
+#[derive(Debug, Clone, Copy)]
+struct ParseContext<'source> {
+    line_number: usize,
+    aliases: &'source HashMap<String, AliasTarget>,
+    constants: &'source HashMap<String, f64>,
+}
+
+impl<'source> ParseContext<'source> {
+    const fn new(
+        line_number: usize,
+        aliases: &'source HashMap<String, AliasTarget>,
+        constants: &'source HashMap<String, f64>,
+    ) -> Self {
+        Self {
+            line_number,
+            aliases,
+            constants,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AliasTarget {
+    Register(RegisterRef),
+    Device(DevicePortOperand),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BranchFlags {
+    link: bool,
+    relative: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum BranchShape {
+    Compare(CompareOperation),
+    CompareZero(CompareZeroOperation),
+    Approx(ApproxOperation),
+    ApproxZero(ApproxZeroOperation),
+    Nan,
+}
+
+impl BranchShape {
+    const fn target_index(self) -> usize {
+        match self {
+            Self::CompareZero(_) | Self::Nan => 2,
+            Self::Compare(_) | Self::ApproxZero(_) => 3,
+            Self::Approx(_) => 4,
+        }
+    }
+
+    const fn expected_tokens(self) -> usize {
+        self.target_index() + 1
     }
 }
 
@@ -82,18 +133,16 @@ pub(super) fn parse_program(source: &str) -> Result<Program, ParseError> {
             continue;
         }
 
-        match tokens[0] {
-            "alias" => parse_alias(&tokens, line_number, &mut aliases)?,
-            "define" => parse_define(&tokens, line_number, &mut constants)?,
-            _ => {
-                let instruction = parse_instruction(&tokens, line_number, &aliases, &constants)?;
-                instructions.push(ProgramInstruction {
-                    source_line: line_number,
-                    text: tokens.join(" "),
-                    instruction,
-                });
-            }
+        if parse_directive(&tokens, line_number, &mut aliases, &mut constants)? {
+            continue;
         }
+
+        let context = ParseContext::new(line_number, &aliases, &constants);
+        instructions.push(ProgramInstruction {
+            source_line: line_number,
+            text: tokens.join(" "),
+            instruction: parse_instruction(&tokens, context)?,
+        });
     }
 
     Ok(Program::new(instructions, labels, constants))
@@ -103,12 +152,12 @@ fn strip_comment(line: &str) -> &str {
     line.split_once('#').map_or(line, |(before, _)| before)
 }
 
-fn parse_labels<'a>(
-    mut line: &'a str,
+fn parse_labels<'line>(
+    mut line: &'line str,
     line_number: usize,
     instruction_index: usize,
     labels: &mut HashMap<String, usize>,
-) -> Result<&'a str, ParseError> {
+) -> Result<&'line str, ParseError> {
     while let Some((candidate, after)) = line.split_once(':') {
         let label = candidate.trim();
         if label.contains(char::is_whitespace) || label.is_empty() {
@@ -133,22 +182,47 @@ fn tokenize(line: &str) -> Vec<&str> {
     line.split_whitespace().collect()
 }
 
+fn parse_directive(
+    tokens: &[&str],
+    line_number: usize,
+    aliases: &mut HashMap<String, AliasTarget>,
+    constants: &mut HashMap<String, f64>,
+) -> Result<bool, ParseError> {
+    match tokens[0] {
+        "alias" => {
+            parse_alias(tokens, line_number, aliases)?;
+            Ok(true)
+        }
+        "define" => {
+            parse_define(tokens, line_number, constants)?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 fn parse_alias(
     tokens: &[&str],
     line_number: usize,
-    aliases: &mut HashMap<String, RegisterRef>,
+    aliases: &mut HashMap<String, AliasTarget>,
 ) -> Result<(), ParseError> {
     require_len(tokens, 3, line_number)?;
     let name = tokens[1];
-    let register = RegisterRef::parse(tokens[2]).ok_or_else(|| {
+    let target = parse_alias_target(tokens[2]).ok_or_else(|| {
         ParseError::new(
-            ParseErrorCode::AliasTargetMustBeRegister,
+            ParseErrorCode::AliasTargetMustBeRegisterOrDevice,
             line_number,
-            "phase 1 aliases must target registers",
+            "alias target must be a register or device pin",
         )
     })?;
-    aliases.insert(name.to_owned(), register);
+    aliases.insert(name.to_owned(), target);
     Ok(())
+}
+
+fn parse_alias_target(token: &str) -> Option<AliasTarget> {
+    parse_register_token(token)
+        .map(AliasTarget::Register)
+        .or_else(|| parse_device_port_token(token).map(AliasTarget::Device))
 }
 
 fn parse_define(
@@ -170,303 +244,413 @@ fn parse_define(
 
 fn parse_instruction(
     tokens: &[&str],
-    line_number: usize,
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
+    context: ParseContext<'_>,
 ) -> Result<Instruction, ParseError> {
     match tokens[0] {
-        "yield" => {
-            require_len(tokens, 1, line_number)?;
-            Ok(Instruction::Yield)
-        }
-        "hcf" => {
-            require_len(tokens, 1, line_number)?;
-            Ok(Instruction::Hcf)
-        }
-        "move" => parse_move(tokens, line_number, aliases, constants),
-        "rand" => {
-            require_len(tokens, 2, line_number)?;
-            Ok(Instruction::Rand {
-                destination: parse_register(tokens[1], line_number, aliases)?,
-            })
-        }
-        "select" => {
-            require_len(tokens, 5, line_number)?;
-            Ok(Instruction::Select {
-                destination: parse_register(tokens[1], line_number, aliases)?,
-                condition: parse_value(tokens[2], aliases, constants),
-                if_true: parse_value(tokens[3], aliases, constants),
-                if_false: parse_value(tokens[4], aliases, constants),
-            })
-        }
-        "push" => {
-            require_len(tokens, 2, line_number)?;
-            Ok(Instruction::Push {
-                value: parse_value(tokens[1], aliases, constants),
-            })
-        }
-        "pop" => {
-            require_len(tokens, 2, line_number)?;
-            Ok(Instruction::Pop {
-                destination: parse_register(tokens[1], line_number, aliases)?,
-            })
-        }
-        "peek" => {
-            require_len(tokens, 2, line_number)?;
-            Ok(Instruction::Peek {
-                destination: parse_register(tokens[1], line_number, aliases)?,
-            })
-        }
-        "poke" => {
-            require_len(tokens, 3, line_number)?;
-            Ok(Instruction::Poke {
-                address: parse_value(tokens[1], aliases, constants),
-                value: parse_value(tokens[2], aliases, constants),
-            })
-        }
-        "j" => parse_jump(tokens, line_number, aliases, false, false),
-        "jal" => parse_jump(tokens, line_number, aliases, true, false),
-        "jr" => parse_jump(tokens, line_number, aliases, false, true),
-        mnemonic => parse_operation(mnemonic, tokens, line_number, aliases, constants),
+        "yield" | "hcf" => parse_control_instruction(tokens, context),
+        "move" | "rand" | "select" => parse_register_instruction(tokens, context),
+        "push" | "pop" | "peek" | "poke" => parse_local_stack_instruction(tokens, context),
+        "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
+        "get" | "put" | "getd" | "putd" => parse_device_stack_instruction(tokens, context),
+        "j" | "jal" | "jr" => parse_jump_instruction(tokens, context),
+        mnemonic => parse_math_or_branch_instruction(mnemonic, tokens, context),
     }
 }
 
-fn parse_move(
+fn parse_control_instruction(
     tokens: &[&str],
-    line_number: usize,
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
+    context: ParseContext<'_>,
 ) -> Result<Instruction, ParseError> {
-    require_len(tokens, 3, line_number)?;
+    require_len(tokens, 1, context.line_number)?;
+    match tokens[0] {
+        "yield" => Ok(Instruction::Yield),
+        "hcf" => Ok(Instruction::Hcf),
+        mnemonic => unsupported_instruction(mnemonic, context.line_number),
+    }
+}
+
+fn parse_register_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    match tokens[0] {
+        "move" => parse_move_instruction(tokens, context),
+        "rand" => parse_rand_instruction(tokens, context),
+        "select" => parse_select_instruction(tokens, context),
+        mnemonic => unsupported_instruction(mnemonic, context.line_number),
+    }
+}
+
+fn parse_move_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 3, context.line_number)?;
     Ok(Instruction::Move {
-        destination: parse_register(tokens[1], line_number, aliases)?,
-        source: parse_value(tokens[2], aliases, constants),
+        destination: parse_register(tokens[1], context)?,
+        source: parse_value(tokens[2], context),
     })
 }
 
-fn parse_jump(
+fn parse_rand_instruction(
     tokens: &[&str],
-    line_number: usize,
-    aliases: &HashMap<String, RegisterRef>,
-    link: bool,
-    relative: bool,
+    context: ParseContext<'_>,
 ) -> Result<Instruction, ParseError> {
-    require_len(tokens, 2, line_number)?;
+    require_len(tokens, 2, context.line_number)?;
+    Ok(Instruction::Rand {
+        destination: parse_register(tokens[1], context)?,
+    })
+}
+
+fn parse_select_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 5, context.line_number)?;
+    Ok(Instruction::Select {
+        destination: parse_register(tokens[1], context)?,
+        condition: parse_value(tokens[2], context),
+        if_true: parse_value(tokens[3], context),
+        if_false: parse_value(tokens[4], context),
+    })
+}
+
+fn parse_local_stack_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    match tokens[0] {
+        "push" => parse_push_instruction(tokens, context),
+        "pop" => parse_pop_instruction(tokens, context),
+        "peek" => parse_peek_instruction(tokens, context),
+        "poke" => parse_poke_instruction(tokens, context),
+        mnemonic => unsupported_instruction(mnemonic, context.line_number),
+    }
+}
+
+fn parse_push_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 2, context.line_number)?;
+    Ok(Instruction::Push {
+        value: parse_value(tokens[1], context),
+    })
+}
+
+fn parse_pop_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 2, context.line_number)?;
+    Ok(Instruction::Pop {
+        destination: parse_register(tokens[1], context)?,
+    })
+}
+
+fn parse_peek_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 2, context.line_number)?;
+    Ok(Instruction::Peek {
+        destination: parse_register(tokens[1], context)?,
+    })
+}
+
+fn parse_poke_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 3, context.line_number)?;
+    Ok(Instruction::Poke {
+        address: parse_value(tokens[1], context),
+        value: parse_value(tokens[2], context),
+    })
+}
+
+fn parse_device_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    match tokens[0] {
+        "l" | "ld" => parse_load_logic_instruction(tokens, context),
+        "s" | "sd" => parse_store_logic_instruction(tokens, context),
+        mnemonic => unsupported_instruction(mnemonic, context.line_number),
+    }
+}
+
+fn parse_load_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 4, context.line_number)?;
+    let device = parse_load_or_store_device(tokens[0], tokens[2], context);
+    Ok(Instruction::LoadLogic {
+        destination: parse_register(tokens[1], context)?,
+        device,
+        field: tokens[3].to_owned(),
+    })
+}
+
+fn parse_store_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 4, context.line_number)?;
+    let device = parse_load_or_store_device(tokens[0], tokens[1], context);
+    Ok(Instruction::StoreLogic {
+        device,
+        field: tokens[2].to_owned(),
+        value: parse_value(tokens[3], context),
+    })
+}
+
+fn parse_device_stack_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    match tokens[0] {
+        "get" | "getd" => parse_get_stack_instruction(tokens, context),
+        "put" | "putd" => parse_put_stack_instruction(tokens, context),
+        mnemonic => unsupported_instruction(mnemonic, context.line_number),
+    }
+}
+
+fn parse_get_stack_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 4, context.line_number)?;
+    let device = parse_get_or_put_device(tokens[0], tokens[2], context);
+    Ok(Instruction::GetStack {
+        destination: parse_register(tokens[1], context)?,
+        device,
+        address: parse_value(tokens[3], context),
+    })
+}
+
+fn parse_put_stack_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 4, context.line_number)?;
+    let device = parse_get_or_put_device(tokens[0], tokens[1], context);
+    Ok(Instruction::PutStack {
+        device,
+        address: parse_value(tokens[2], context),
+        value: parse_value(tokens[3], context),
+    })
+}
+
+fn parse_load_or_store_device(
+    mnemonic: &str,
+    token: &str,
+    context: ParseContext<'_>,
+) -> DeviceOperand {
+    if matches!(mnemonic, "ld" | "sd") {
+        DeviceOperand::Reference(parse_value(token, context))
+    } else {
+        parse_device_operand(token, context)
+    }
+}
+
+fn parse_get_or_put_device(
+    mnemonic: &str,
+    token: &str,
+    context: ParseContext<'_>,
+) -> DeviceOperand {
+    if matches!(mnemonic, "getd" | "putd") {
+        DeviceOperand::Reference(parse_value(token, context))
+    } else {
+        parse_device_operand(token, context)
+    }
+}
+
+fn parse_jump_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 2, context.line_number)?;
+    let (link, relative) = match tokens[0] {
+        "j" => (false, false),
+        "jal" => (true, false),
+        "jr" => (false, true),
+        mnemonic => return unsupported_instruction(mnemonic, context.line_number),
+    };
     Ok(Instruction::Jump {
-        target: parse_jump_target(tokens[1], aliases),
+        target: parse_jump_target(tokens[1], context),
         link,
         relative,
     })
 }
 
-fn parse_operation(
+fn parse_math_or_branch_instruction(
     mnemonic: &str,
     tokens: &[&str],
-    line_number: usize,
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
+    context: ParseContext<'_>,
 ) -> Result<Instruction, ParseError> {
+    if let Some(instruction) = parse_math_instruction(mnemonic, tokens, context)? {
+        return Ok(instruction);
+    }
+    if let Some(instruction) = parse_branch_instruction(mnemonic, tokens, context)? {
+        return Ok(instruction);
+    }
+    unsupported_instruction(mnemonic, context.line_number)
+}
+
+fn parse_math_instruction(
+    mnemonic: &str,
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Option<Instruction>, ParseError> {
     if let Some(operation) = unary_operation(mnemonic) {
-        require_len(tokens, 3, line_number)?;
-        return Ok(Instruction::Unary {
+        require_len(tokens, 3, context.line_number)?;
+        return Ok(Some(Instruction::Unary {
             operation,
-            destination: parse_register(tokens[1], line_number, aliases)?,
-            source: parse_value(tokens[2], aliases, constants),
-        });
+            destination: parse_register(tokens[1], context)?,
+            source: parse_value(tokens[2], context),
+        }));
     }
 
     if let Some(operation) = binary_operation(mnemonic) {
-        require_len(tokens, 4, line_number)?;
-        return Ok(Instruction::Binary {
+        require_len(tokens, 4, context.line_number)?;
+        return Ok(Some(Instruction::Binary {
             operation,
-            destination: parse_register(tokens[1], line_number, aliases)?,
-            left: parse_value(tokens[2], aliases, constants),
-            right: parse_value(tokens[3], aliases, constants),
-        });
+            destination: parse_register(tokens[1], context)?,
+            left: parse_value(tokens[2], context),
+            right: parse_value(tokens[3], context),
+        }));
     }
 
     if let Some(operation) = ternary_operation(mnemonic) {
-        require_len(tokens, 5, line_number)?;
-        return Ok(Instruction::Ternary {
+        require_len(tokens, 5, context.line_number)?;
+        return Ok(Some(Instruction::Ternary {
             operation,
-            destination: parse_register(tokens[1], line_number, aliases)?,
-            first: parse_value(tokens[2], aliases, constants),
-            second: parse_value(tokens[3], aliases, constants),
-            third: parse_value(tokens[4], aliases, constants),
-        });
+            destination: parse_register(tokens[1], context)?,
+            first: parse_value(tokens[2], context),
+            second: parse_value(tokens[3], context),
+            third: parse_value(tokens[4], context),
+        }));
     }
 
-    if let Some((condition, target_index, flags)) =
-        parse_branch_condition(mnemonic, tokens, aliases, constants)
-    {
-        require_len(tokens, target_index + 1, line_number)?;
-        return Ok(Instruction::Branch {
-            condition,
-            target: parse_jump_target(tokens[target_index], aliases),
-            link: flags.link,
-            relative: flags.relative,
-        });
-    }
+    Ok(None)
+}
 
-    Err(ParseError::new(
-        ParseErrorCode::UnsupportedInstruction,
-        line_number,
-        format!("unsupported instruction `{mnemonic}`"),
-    ))
+fn parse_branch_instruction(
+    mnemonic: &str,
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Option<Instruction>, ParseError> {
+    let Some((base, flags)) = branch_family(mnemonic) else {
+        return Ok(None);
+    };
+    let Some(shape) = branch_shape(base) else {
+        return Ok(None);
+    };
+
+    require_len(tokens, shape.expected_tokens(), context.line_number)?;
+    Ok(Some(Instruction::Branch {
+        condition: parse_branch_condition(shape, tokens, context),
+        target: parse_jump_target(tokens[shape.target_index()], context),
+        link: flags.link,
+        relative: flags.relative,
+    }))
 }
 
 fn parse_branch_condition(
-    mnemonic: &str,
+    shape: BranchShape,
     tokens: &[&str],
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
-) -> Option<(BranchCondition, usize, BranchFlags)> {
-    let (base, flags) = branch_family(mnemonic)?;
-    if let Some(operation) = compare_operation(base) {
-        return Some(compare_branch(operation, tokens, aliases, constants, flags));
-    }
-    if let Some(operation) = compare_zero_operation(base) {
-        return Some(compare_zero_branch(
-            operation, tokens, aliases, constants, flags,
-        ));
-    }
-    if let Some(operation) = approximate_operation(base) {
-        return Some(approx_branch(operation, tokens, aliases, constants, flags));
-    }
-    if let Some(operation) = approximate_zero_operation(base) {
-        return Some(approx_zero_branch(
-            operation, tokens, aliases, constants, flags,
-        ));
-    }
-    parse_nan_branch(base, tokens, aliases, constants, flags)
-}
-
-fn compare_branch(
-    operation: CompareOperation,
-    tokens: &[&str],
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
-    flags: BranchFlags,
-) -> (BranchCondition, usize, BranchFlags) {
-    (
-        BranchCondition::Compare {
+    context: ParseContext<'_>,
+) -> BranchCondition {
+    match shape {
+        BranchShape::Compare(operation) => BranchCondition::Compare {
             operation,
-            left: parse_value(
-                tokens.get(1).copied().unwrap_or_default(),
-                aliases,
-                constants,
-            ),
-            right: parse_value(
-                tokens.get(2).copied().unwrap_or_default(),
-                aliases,
-                constants,
-            ),
+            left: parse_value(tokens[1], context),
+            right: parse_value(tokens[2], context),
         },
-        3,
-        flags,
-    )
-}
-
-fn compare_zero_branch(
-    operation: CompareZeroOperation,
-    tokens: &[&str],
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
-    flags: BranchFlags,
-) -> (BranchCondition, usize, BranchFlags) {
-    (
-        BranchCondition::CompareZero {
+        BranchShape::CompareZero(operation) => BranchCondition::CompareZero {
             operation,
-            value: parse_value(
-                tokens.get(1).copied().unwrap_or_default(),
-                aliases,
-                constants,
-            ),
+            value: parse_value(tokens[1], context),
         },
-        2,
-        flags,
-    )
-}
-
-fn approx_branch(
-    operation: ApproxOperation,
-    tokens: &[&str],
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
-    flags: BranchFlags,
-) -> (BranchCondition, usize, BranchFlags) {
-    (
-        BranchCondition::Approx {
+        BranchShape::Approx(operation) => BranchCondition::Approx {
             operation,
-            left: parse_value(
-                tokens.get(1).copied().unwrap_or_default(),
-                aliases,
-                constants,
-            ),
-            right: parse_value(
-                tokens.get(2).copied().unwrap_or_default(),
-                aliases,
-                constants,
-            ),
-            tolerance: parse_value(
-                tokens.get(3).copied().unwrap_or_default(),
-                aliases,
-                constants,
-            ),
+            left: parse_value(tokens[1], context),
+            right: parse_value(tokens[2], context),
+            tolerance: parse_value(tokens[3], context),
         },
-        4,
-        flags,
-    )
-}
-
-fn approx_zero_branch(
-    operation: ApproxZeroOperation,
-    tokens: &[&str],
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
-    flags: BranchFlags,
-) -> (BranchCondition, usize, BranchFlags) {
-    (
-        BranchCondition::ApproxZero {
+        BranchShape::ApproxZero(operation) => BranchCondition::ApproxZero {
             operation,
-            value: parse_value(
-                tokens.get(1).copied().unwrap_or_default(),
-                aliases,
-                constants,
-            ),
-            tolerance: parse_value(
-                tokens.get(2).copied().unwrap_or_default(),
-                aliases,
-                constants,
-            ),
+            value: parse_value(tokens[1], context),
+            tolerance: parse_value(tokens[2], context),
         },
-        3,
-        flags,
-    )
+        BranchShape::Nan => BranchCondition::Nan {
+            value: parse_value(tokens[1], context),
+        },
+    }
 }
 
-fn parse_nan_branch(
-    base: &str,
-    tokens: &[&str],
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
-    flags: BranchFlags,
-) -> Option<(BranchCondition, usize, BranchFlags)> {
-    if base == "bnan" {
-        Some((
-            BranchCondition::Nan {
-                value: parse_value(
-                    tokens.get(1).copied().unwrap_or_default(),
-                    aliases,
-                    constants,
-                ),
+fn branch_family(mnemonic: &str) -> Option<(&str, BranchFlags)> {
+    if let Some(stripped) = mnemonic.strip_prefix("br") {
+        return Some((
+            relative_branch_base(stripped)?,
+            BranchFlags {
+                link: false,
+                relative: true,
             },
-            2,
-            flags,
-        ))
-    } else {
-        None
+        ));
     }
+    if let Some(stripped) = mnemonic.strip_suffix("al") {
+        return Some((
+            stripped,
+            BranchFlags {
+                link: true,
+                relative: false,
+            },
+        ));
+    }
+    if mnemonic.starts_with('b') {
+        return Some((
+            mnemonic,
+            BranchFlags {
+                link: false,
+                relative: false,
+            },
+        ));
+    }
+    None
+}
+
+fn relative_branch_base(stripped_relative: &str) -> Option<&str> {
+    match stripped_relative {
+        "eq" => Some("beq"),
+        "ne" => Some("bne"),
+        "ge" => Some("bge"),
+        "gt" => Some("bgt"),
+        "le" => Some("ble"),
+        "lt" => Some("blt"),
+        "eqz" => Some("beqz"),
+        "nez" => Some("bnez"),
+        "gez" => Some("bgez"),
+        "gtz" => Some("bgtz"),
+        "lez" => Some("blez"),
+        "ltz" => Some("bltz"),
+        "ap" => Some("bap"),
+        "na" => Some("bna"),
+        "apz" => Some("bapz"),
+        "naz" => Some("bnaz"),
+        "nan" => Some("bnan"),
+        _ => None,
+    }
+}
+
+fn branch_shape(base: &str) -> Option<BranchShape> {
+    compare_operation(base)
+        .map(BranchShape::Compare)
+        .or_else(|| compare_zero_operation(base).map(BranchShape::CompareZero))
+        .or_else(|| approximate_operation(base).map(BranchShape::Approx))
+        .or_else(|| approximate_zero_operation(base).map(BranchShape::ApproxZero))
+        .or_else(|| (base == "bnan").then_some(BranchShape::Nan))
 }
 
 fn compare_operation(base: &str) -> Option<CompareOperation> {
@@ -505,60 +689,6 @@ fn approximate_zero_operation(base: &str) -> Option<ApproxZeroOperation> {
     match base {
         "bapz" => Some(ApproxZeroOperation::ApproximatelyZero),
         "bnaz" => Some(ApproxZeroOperation::NotApproximatelyZero),
-        _ => None,
-    }
-}
-
-fn branch_family(mnemonic: &str) -> Option<(&str, BranchFlags)> {
-    if let Some(stripped) = mnemonic.strip_prefix("br") {
-        return Some((
-            branch_base(stripped)?,
-            BranchFlags {
-                link: false,
-                relative: true,
-            },
-        ));
-    }
-    if let Some(stripped) = mnemonic.strip_suffix("al") {
-        return Some((
-            stripped,
-            BranchFlags {
-                link: true,
-                relative: false,
-            },
-        ));
-    }
-    if mnemonic.starts_with('b') {
-        return Some((
-            mnemonic,
-            BranchFlags {
-                link: false,
-                relative: false,
-            },
-        ));
-    }
-    None
-}
-
-fn branch_base(stripped_relative: &str) -> Option<&str> {
-    match stripped_relative {
-        "eq" => Some("beq"),
-        "ne" => Some("bne"),
-        "ge" => Some("bge"),
-        "gt" => Some("bgt"),
-        "le" => Some("ble"),
-        "lt" => Some("blt"),
-        "eqz" => Some("beqz"),
-        "nez" => Some("bnez"),
-        "gez" => Some("bgez"),
-        "gtz" => Some("bgtz"),
-        "lez" => Some("blez"),
-        "ltz" => Some("bltz"),
-        "ap" => Some("bap"),
-        "na" => Some("bna"),
-        "apz" => Some("bapz"),
-        "naz" => Some("bnaz"),
-        "nan" => Some("bnan"),
         _ => None,
     }
 }
@@ -632,37 +762,27 @@ fn ternary_operation(mnemonic: &str) -> Option<TernaryOperation> {
     }
 }
 
-fn parse_register(
-    token: &str,
-    line_number: usize,
-    aliases: &HashMap<String, RegisterRef>,
-) -> Result<RegisterRef, ParseError> {
-    aliases
-        .get(token)
-        .copied()
-        .or_else(|| RegisterRef::parse(token))
-        .ok_or_else(|| {
-            ParseError::new(
-                ParseErrorCode::ExpectedRegister,
-                line_number,
-                format!("expected register, found `{token}`"),
-            )
-        })
+fn parse_register(token: &str, context: ParseContext<'_>) -> Result<RegisterRef, ParseError> {
+    if let Some(AliasTarget::Register(register)) = context.aliases.get(token).copied() {
+        return Ok(register);
+    }
+    parse_register_token(token).ok_or_else(|| {
+        ParseError::new(
+            ParseErrorCode::ExpectedRegister,
+            context.line_number,
+            format!("expected register, found `{token}`"),
+        )
+    })
 }
 
-fn parse_value(
-    token: &str,
-    aliases: &HashMap<String, RegisterRef>,
-    constants: &HashMap<String, f64>,
-) -> ValueOperand {
-    aliases
-        .get(token)
-        .copied()
-        .or_else(|| RegisterRef::parse(token))
-        .map_or_else(
-            || parse_non_register_value(token, constants),
+fn parse_value(token: &str, context: ParseContext<'_>) -> ValueOperand {
+    match context.aliases.get(token).copied() {
+        Some(AliasTarget::Register(register)) => ValueOperand::Register(register),
+        Some(AliasTarget::Device(_)) | None => parse_register_token(token).map_or_else(
+            || parse_non_register_value(token, context.constants),
             ValueOperand::Register,
-        )
+        ),
+    }
 }
 
 fn parse_non_register_value(token: &str, constants: &HashMap<String, f64>) -> ValueOperand {
@@ -677,18 +797,74 @@ fn parse_non_register_value(token: &str, constants: &HashMap<String, f64>) -> Va
     )
 }
 
-fn parse_jump_target(token: &str, aliases: &HashMap<String, RegisterRef>) -> JumpTarget {
-    aliases
-        .get(token)
-        .copied()
-        .or_else(|| RegisterRef::parse(token))
-        .map_or_else(
+fn parse_jump_target(token: &str, context: ParseContext<'_>) -> JumpTarget {
+    match context.aliases.get(token).copied() {
+        Some(AliasTarget::Register(register)) => JumpTarget::Register(register),
+        Some(AliasTarget::Device(_)) | None => parse_register_token(token).map_or_else(
             || {
                 parse_number(token)
                     .map_or_else(|| JumpTarget::Symbol(token.to_owned()), JumpTarget::Number)
             },
             JumpTarget::Register,
-        )
+        ),
+    }
+}
+
+fn parse_device_operand(token: &str, context: ParseContext<'_>) -> DeviceOperand {
+    match context.aliases.get(token).copied() {
+        Some(AliasTarget::Device(device)) => DeviceOperand::Port(device),
+        Some(AliasTarget::Register(register)) => {
+            DeviceOperand::Reference(ValueOperand::Register(register))
+        }
+        None => parse_device_port_token(token).map_or_else(
+            || DeviceOperand::Reference(parse_value(token, context)),
+            DeviceOperand::Port,
+        ),
+    }
+}
+
+fn parse_device_port_token(token: &str) -> Option<DevicePortOperand> {
+    if token == "db" {
+        return Some(DevicePortOperand::Direct(DevicePort::Db));
+    }
+    let pin = token
+        .strip_prefix('d')
+        .and_then(|digits| digits.parse::<u8>().ok())
+        .and_then(DevicePort::from_pin_index);
+    if let Some(pin) = pin {
+        return Some(DevicePortOperand::Direct(pin));
+    }
+    token
+        .strip_prefix('d')
+        .and_then(parse_register_token)
+        .map(DevicePortOperand::Indirect)
+}
+
+fn parse_register_token(token: &str) -> Option<RegisterRef> {
+    if token == "ra" {
+        return Some(RegisterRef::return_address());
+    }
+    if token == "sp" {
+        return Some(RegisterRef::stack_pointer());
+    }
+
+    let r_count = token.bytes().take_while(|byte| *byte == b'r').count();
+    if r_count == 0 {
+        return None;
+    }
+    let digits = token.get(r_count..)?;
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+
+    let parsed = digits.parse::<u8>().ok()?;
+    let base = RegisterIndex::new(parsed)?;
+    if r_count == 1 {
+        Some(RegisterRef::direct(base))
+    } else {
+        let depth = u8::try_from(r_count - 1).ok()?;
+        Some(RegisterRef::indirect(base, depth))
+    }
 }
 
 fn parse_number(token: &str) -> Option<f64> {
@@ -730,4 +906,12 @@ fn require_len(tokens: &[&str], expected: usize, line_number: usize) -> Result<(
             ),
         ))
     }
+}
+
+fn unsupported_instruction<T>(mnemonic: &str, line_number: usize) -> Result<T, ParseError> {
+    Err(ParseError::new(
+        ParseErrorCode::UnsupportedInstruction,
+        line_number,
+        format!("unsupported instruction `{mnemonic}`"),
+    ))
 }

@@ -3,10 +3,13 @@
 use std::{cmp::Ordering, fmt};
 
 use super::{
+    environment::{
+        DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment, NoEnvironment, ReferenceId,
+    },
     instruction::{
         ApproxOperation, ApproxZeroOperation, BinaryOperation, BranchCondition, CompareOperation,
-        CompareZeroOperation, Instruction, JumpTarget, TernaryOperation, UnaryOperation,
-        ValueOperand,
+        CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction, JumpTarget,
+        TernaryOperation, UnaryOperation, ValueOperand,
     },
     program::Program,
     registers::{RegisterFault, RegisterRef, Registers},
@@ -51,9 +54,19 @@ impl Vm {
         budget: u32,
         trace: &mut TraceSink,
     ) -> Result<RunResult, VmFault> {
+        let mut environment = NoEnvironment;
+        self.run_until_yield_or_budget_with_environment(budget, trace, &mut environment)
+    }
+
+    pub(super) fn run_until_yield_or_budget_with_environment<E: Ic10Environment>(
+        &mut self,
+        budget: u32,
+        trace: &mut TraceSink,
+        environment: &mut E,
+    ) -> Result<RunResult, VmFault> {
         let mut instructions_executed = 0;
         for _ in 0..budget {
-            match self.step(trace)? {
+            match self.step(trace, environment)? {
                 StepStop::Continue => instructions_executed += 1,
                 StepStop::Yielded => {
                     instructions_executed += 1;
@@ -76,7 +89,11 @@ impl Vm {
         })
     }
 
-    fn step(&mut self, trace: &mut TraceSink) -> Result<StepStop, VmFault> {
+    fn step<E: Ic10Environment>(
+        &mut self,
+        trace: &mut TraceSink,
+        environment: &mut E,
+    ) -> Result<StepStop, VmFault> {
         let Some(program_instruction) = self.program.instruction(self.program_counter).cloned()
         else {
             return Ok(StepStop::Halted);
@@ -85,13 +102,14 @@ impl Vm {
         let current_pc = self.program_counter;
         trace.instruction(current_pc, &program_instruction);
         self.program_counter += 1;
-        self.execute(program_instruction.instruction, current_pc)
+        self.execute(program_instruction.instruction, current_pc, environment)
     }
 
-    fn execute(
+    fn execute<E: Ic10Environment>(
         &mut self,
         instruction: Instruction,
         current_pc: usize,
+        environment: &mut E,
     ) -> Result<StepStop, VmFault> {
         match instruction {
             Instruction::Yield => Ok(StepStop::Yielded),
@@ -152,6 +170,26 @@ impl Vm {
             Instruction::Pop { destination } => self.execute_pop(destination),
             Instruction::Peek { destination } => self.execute_peek(destination),
             Instruction::Poke { address, value } => self.execute_poke(&address, &value),
+            Instruction::LoadLogic {
+                destination,
+                device,
+                field,
+            } => self.execute_load_logic(environment, destination, &device, &field),
+            Instruction::StoreLogic {
+                device,
+                field,
+                value,
+            } => self.execute_store_logic(environment, &device, &field, &value),
+            Instruction::GetStack {
+                destination,
+                device,
+                address,
+            } => self.execute_get_stack(environment, destination, &device, &address),
+            Instruction::PutStack {
+                device,
+                address,
+                value,
+            } => self.execute_put_stack(environment, &device, &address, &value),
         }
     }
 
@@ -253,6 +291,60 @@ impl Vm {
         Ok(StepStop::Continue)
     }
 
+    fn execute_load_logic<E: Ic10Environment>(
+        &mut self,
+        environment: &mut E,
+        destination: RegisterRef,
+        device: &DeviceOperand,
+        field: &str,
+    ) -> Result<StepStop, VmFault> {
+        let target = self.device_target(device)?;
+        let value = environment.load_logic(target, field)?;
+        self.write(destination, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_store_logic<E: Ic10Environment>(
+        &self,
+        environment: &mut E,
+        device: &DeviceOperand,
+        field: &str,
+        value: &ValueOperand,
+    ) -> Result<StepStop, VmFault> {
+        let target = self.device_target(device)?;
+        let value = self.value(value)?;
+        environment.store_logic(target, field, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_get_stack<E: Ic10Environment>(
+        &mut self,
+        environment: &mut E,
+        destination: RegisterRef,
+        device: &DeviceOperand,
+        address: &ValueOperand,
+    ) -> Result<StepStop, VmFault> {
+        let target = self.device_target(device)?;
+        let address = numeric_index(self.value(address)?)?;
+        let value = environment.get_stack(target, address)?;
+        self.write(destination, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_put_stack<E: Ic10Environment>(
+        &self,
+        environment: &mut E,
+        device: &DeviceOperand,
+        address: &ValueOperand,
+        value: &ValueOperand,
+    ) -> Result<StepStop, VmFault> {
+        let target = self.device_target(device)?;
+        let address = numeric_index(self.value(address)?)?;
+        let value = self.value(value)?;
+        environment.put_stack(target, address, value)?;
+        Ok(StepStop::Continue)
+    }
+
     fn value(&self, operand: &ValueOperand) -> Result<f64, VmFault> {
         match operand {
             ValueOperand::Register(register) => Ok(self.registers.read(*register)?),
@@ -267,6 +359,28 @@ impl Vm {
 
     fn write(&mut self, register: RegisterRef, value: f64) -> Result<(), VmFault> {
         Ok(self.registers.write(register, value)?)
+    }
+
+    fn device_target(&self, operand: &DeviceOperand) -> Result<DeviceTarget, VmFault> {
+        match operand {
+            DeviceOperand::Port(port) => Ok(DeviceTarget::Port(self.device_port(*port)?)),
+            DeviceOperand::Reference(reference) => Ok(DeviceTarget::ReferenceId(reference_id(
+                self.value(reference)?,
+            )?)),
+        }
+    }
+
+    fn device_port(&self, operand: DevicePortOperand) -> Result<DevicePort, VmFault> {
+        match operand {
+            DevicePortOperand::Direct(port) => Ok(port),
+            DevicePortOperand::Indirect(register) => {
+                let index = self.registers.read(register)?;
+                let index = u8::try_from(numeric_index(index)?)
+                    .map_err(|_| VmFault::InvalidDevicePortIndex(index))?;
+                DevicePort::from_pin_index(index)
+                    .ok_or_else(|| VmFault::InvalidDevicePortIndex(f64::from(index)))
+            }
+        }
     }
 
     fn unary(operation: UnaryOperation, value: f64) -> Result<f64, VmFault> {
@@ -486,6 +600,8 @@ pub(super) enum VmFault {
     InvalidJumpTarget(usize),
     ProgramCounterTooLarge(usize),
     InvalidNumericIndex(f64),
+    InvalidReferenceId(f64),
+    InvalidDevicePortIndex(f64),
     InvalidIntegerOperand(f64),
     InvalidShiftOperand(i64),
     RelativeJumpOutOfRange(i64),
@@ -493,6 +609,7 @@ pub(super) enum VmFault {
     UnsignedIntegerNotExactlyRepresentable(u64),
     Register(RegisterFault),
     Stack(StackFault),
+    Environment(EnvironmentFault),
     HaltAndCatchFire { pc: usize },
 }
 
@@ -506,6 +623,12 @@ impl fmt::Display for VmFault {
             }
             Self::InvalidNumericIndex(value) => {
                 write!(formatter, "invalid numeric index `{value}`")
+            }
+            Self::InvalidReferenceId(value) => {
+                write!(formatter, "invalid ReferenceId `{value}`")
+            }
+            Self::InvalidDevicePortIndex(value) => {
+                write!(formatter, "invalid device port index `{value}`")
             }
             Self::InvalidIntegerOperand(value) => {
                 write!(formatter, "expected integer operand, got `{value}`")
@@ -530,6 +653,7 @@ impl fmt::Display for VmFault {
             }
             Self::Register(error) => write!(formatter, "{error}"),
             Self::Stack(error) => write!(formatter, "{error}"),
+            Self::Environment(error) => write!(formatter, "{error}"),
             Self::HaltAndCatchFire { pc } => write!(formatter, "hcf executed at pc {pc}"),
         }
     }
@@ -544,6 +668,12 @@ impl From<RegisterFault> for VmFault {
 impl From<StackFault> for VmFault {
     fn from(value: StackFault) -> Self {
         Self::Stack(value)
+    }
+}
+
+impl From<EnvironmentFault> for VmFault {
+    fn from(value: EnvironmentFault) -> Self {
+        Self::Environment(value)
     }
 }
 
@@ -625,6 +755,17 @@ fn numeric_index(value: f64) -> Result<usize, VmFault> {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let index = value as usize;
     Ok(index)
+}
+
+fn reference_id(value: f64) -> Result<ReferenceId, VmFault> {
+    if !value.is_finite() || value.fract() != 0.0 || value < 0.0 {
+        return Err(VmFault::InvalidReferenceId(value));
+    }
+    if value > f64::from(u32::MAX) {
+        return Err(VmFault::InvalidReferenceId(value));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Ok(ReferenceId::new(value as u32))
 }
 
 fn add_relative(program_counter: usize, offset: i64) -> Result<usize, VmFault> {

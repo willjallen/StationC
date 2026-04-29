@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use super::registers::RegisterRef;
+use super::{environment::DevicePort, registers::RegisterRef};
 
 #[derive(Debug, Clone)]
 pub(super) struct ProgramInstruction {
@@ -70,6 +70,26 @@ pub(super) enum Instruction {
         address: ValueOperand,
         value: ValueOperand,
     },
+    LoadLogic {
+        destination: RegisterRef,
+        device: DeviceOperand,
+        field: String,
+    },
+    StoreLogic {
+        device: DeviceOperand,
+        field: String,
+        value: ValueOperand,
+    },
+    GetStack {
+        destination: RegisterRef,
+        device: DeviceOperand,
+        address: ValueOperand,
+    },
+    PutStack {
+        device: DeviceOperand,
+        address: ValueOperand,
+        value: ValueOperand,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +104,18 @@ pub(super) enum JumpTarget {
     Number(f64),
     Register(RegisterRef),
     Symbol(String),
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum DeviceOperand {
+    Port(DevicePortOperand),
+    Reference(ValueOperand),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum DevicePortOperand {
+    Direct(DevicePort),
+    Indirect(RegisterRef),
 }
 
 #[derive(Debug, Clone, Copy)]

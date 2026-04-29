@@ -1,0 +1,72 @@
+//! IC housing model.
+
+use crate::sim::ic10::{DevicePort, Error, ReferenceId, Vm};
+
+use super::device::Device;
+
+pub(super) const PIN_COUNT: usize = 6;
+
+/// A simulated IC housing with one IC10 VM, one housing body, and six pins.
+#[derive(Debug)]
+pub struct IcHousing {
+    pub(super) reference_id: ReferenceId,
+    pub(super) vm: Vm,
+    pub(super) device: Device,
+    pub(super) pins: [Option<ReferenceId>; PIN_COUNT],
+}
+
+impl IcHousing {
+    pub(super) fn from_source(reference_id: ReferenceId, source: &str) -> Result<Self, Error> {
+        Ok(Self {
+            reference_id,
+            vm: Vm::from_source(source)?,
+            device: Device::ic_housing_body(reference_id),
+            pins: [None; PIN_COUNT],
+        })
+    }
+
+    /// Returns this housing's `ReferenceId`.
+    #[must_use]
+    pub const fn reference_id(&self) -> ReferenceId {
+        self.reference_id
+    }
+
+    /// Returns the IC10 virtual machine installed in this housing.
+    #[must_use]
+    pub const fn vm(&self) -> &Vm {
+        &self.vm
+    }
+
+    /// Returns the mutable IC10 virtual machine installed in this housing.
+    #[must_use]
+    pub const fn vm_mut(&mut self) -> &mut Vm {
+        &mut self.vm
+    }
+
+    /// Returns the world-facing device body of this IC housing.
+    #[must_use]
+    pub const fn device(&self) -> &Device {
+        &self.device
+    }
+
+    /// Returns the mutable world-facing device body of this IC housing.
+    #[must_use]
+    pub const fn device_mut(&mut self) -> &mut Device {
+        &mut self.device
+    }
+
+    /// Returns the `ReferenceId` connected to a direct pin.
+    #[must_use]
+    pub const fn pin(&self, port: DevicePort) -> Option<ReferenceId> {
+        match port.pin_index() {
+            Some(index) => self.pins[index],
+            None => Some(self.reference_id),
+        }
+    }
+
+    pub(super) const fn set_pin(&mut self, port: DevicePort, target: ReferenceId) {
+        if let Some(index) = port.pin_index() {
+            self.pins[index] = Some(target);
+        }
+    }
+}

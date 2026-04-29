@@ -1,5 +1,6 @@
 //! IC10 simulator support.
 
+mod environment;
 mod instruction;
 mod parser;
 mod program;
@@ -10,6 +11,10 @@ mod vm;
 
 use std::{env, error::Error as StdError, fmt, fs, path::PathBuf, process::ExitCode};
 
+pub use environment::{
+    DevicePort, DeviceTarget, EnvironmentFault, EnvironmentOperation, Ic10Environment,
+    NoEnvironment, ReferenceId,
+};
 use parser::parse_program;
 use registers::REGISTER_COUNT as INTERNAL_REGISTER_COUNT;
 use stack::STACK_SIZE as INTERNAL_STACK_SIZE;
@@ -55,6 +60,25 @@ impl Vm {
         let result = self
             .inner
             .run_until_yield_or_budget(budget, &mut trace_sink)?;
+        Ok(result.into())
+    }
+
+    /// Runs one IC10 tick with a caller-provided world environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] when execution encounters a runtime fault.
+    pub fn run_until_yield_or_budget_with_environment<E: Ic10Environment>(
+        &mut self,
+        budget: u32,
+        environment: &mut E,
+    ) -> Result<TickResult, Error> {
+        let mut trace_sink = TraceSink::disabled();
+        let result = self.inner.run_until_yield_or_budget_with_environment(
+            budget,
+            &mut trace_sink,
+            environment,
+        )?;
         Ok(result.into())
     }
 
@@ -210,6 +234,8 @@ pub enum ErrorCode {
     WrongArity,
     /// An `alias` directive targeted something other than a register.
     AliasTargetMustBeRegister,
+    /// An `alias` directive targeted something other than a register or device pin.
+    AliasTargetMustBeRegisterOrDevice,
     /// A `define` directive used a non-numeric value.
     DefineValueMustBeNumeric,
     /// The parser does not support the instruction mnemonic.
@@ -224,6 +250,10 @@ pub enum ErrorCode {
     ProgramCounterTooLarge,
     /// A numeric value could not be used as an instruction or stack index.
     InvalidNumericIndex,
+    /// A numeric value could not be used as a direct `ReferenceId`.
+    InvalidReferenceId,
+    /// A numeric value could not be used as an indirect device pin.
+    InvalidDevicePortIndex,
     /// An operand expected to be an integer was not an integer.
     InvalidIntegerOperand,
     /// A shift count was invalid.
@@ -238,6 +268,18 @@ pub enum ErrorCode {
     InvalidIndirectRegisterIndex,
     /// A stack operation addressed outside stack memory.
     StackAddressOutOfRange,
+    /// A world-facing instruction ran without world context.
+    WorldContextRequired,
+    /// A device pin was not bound in the current world context.
+    DevicePortUnbound,
+    /// A direct `ReferenceId` did not resolve in the current world context.
+    UnknownReferenceId,
+    /// A device did not expose the requested logic field.
+    UnknownLogicField,
+    /// A device logic field can be read but not written.
+    ReadOnlyLogicField,
+    /// A device stack operation addressed outside device stack memory.
+    DeviceStackAddressOutOfRange,
     /// The program executed `hcf`.
     HaltAndCatchFire,
 }
@@ -292,7 +334,9 @@ const fn parse_error_code(error: parser::ParseErrorCode) -> ErrorCode {
     match error {
         parser::ParseErrorCode::DuplicateLabel => ErrorCode::DuplicateLabel,
         parser::ParseErrorCode::WrongArity => ErrorCode::WrongArity,
-        parser::ParseErrorCode::AliasTargetMustBeRegister => ErrorCode::AliasTargetMustBeRegister,
+        parser::ParseErrorCode::AliasTargetMustBeRegisterOrDevice => {
+            ErrorCode::AliasTargetMustBeRegisterOrDevice
+        }
         parser::ParseErrorCode::DefineValueMustBeNumeric => ErrorCode::DefineValueMustBeNumeric,
         parser::ParseErrorCode::UnsupportedInstruction => ErrorCode::UnsupportedInstruction,
         parser::ParseErrorCode::ExpectedRegister => ErrorCode::ExpectedRegister,
@@ -316,6 +360,8 @@ const fn vm_fault_code(error: &vm::VmFault) -> ErrorCode {
         vm::VmFault::InvalidJumpTarget(_) => ErrorCode::InvalidJumpTarget,
         vm::VmFault::ProgramCounterTooLarge(_) => ErrorCode::ProgramCounterTooLarge,
         vm::VmFault::InvalidNumericIndex(_) => ErrorCode::InvalidNumericIndex,
+        vm::VmFault::InvalidReferenceId(_) => ErrorCode::InvalidReferenceId,
+        vm::VmFault::InvalidDevicePortIndex(_) => ErrorCode::InvalidDevicePortIndex,
         vm::VmFault::InvalidIntegerOperand(_) => ErrorCode::InvalidIntegerOperand,
         vm::VmFault::InvalidShiftOperand(_) => ErrorCode::InvalidShiftOperand,
         vm::VmFault::RelativeJumpOutOfRange(_) => ErrorCode::RelativeJumpOutOfRange,
@@ -329,6 +375,24 @@ const fn vm_fault_code(error: &vm::VmFault) -> ErrorCode {
         vm::VmFault::Stack(stack::StackFault::AddressOutOfRange { .. }) => {
             ErrorCode::StackAddressOutOfRange
         }
+        vm::VmFault::Environment(environment::EnvironmentFault::WorldContextRequired {
+            ..
+        }) => ErrorCode::WorldContextRequired,
+        vm::VmFault::Environment(environment::EnvironmentFault::DevicePortUnbound { .. }) => {
+            ErrorCode::DevicePortUnbound
+        }
+        vm::VmFault::Environment(environment::EnvironmentFault::UnknownReferenceId { .. }) => {
+            ErrorCode::UnknownReferenceId
+        }
+        vm::VmFault::Environment(environment::EnvironmentFault::UnknownLogicField { .. }) => {
+            ErrorCode::UnknownLogicField
+        }
+        vm::VmFault::Environment(environment::EnvironmentFault::ReadOnlyLogicField { .. }) => {
+            ErrorCode::ReadOnlyLogicField
+        }
+        vm::VmFault::Environment(environment::EnvironmentFault::StackAddressOutOfRange {
+            ..
+        }) => ErrorCode::DeviceStackAddressOutOfRange,
         vm::VmFault::HaltAndCatchFire { .. } => ErrorCode::HaltAndCatchFire,
     }
 }

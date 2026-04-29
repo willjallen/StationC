@@ -122,7 +122,7 @@ fn bad_register_alias_is_parse_error() -> TestResult {
 alias total 42
 yield
 ",
-        ErrorCode::AliasTargetMustBeRegister,
+        ErrorCode::AliasTargetMustBeRegisterOrDevice,
         1,
     )
 }

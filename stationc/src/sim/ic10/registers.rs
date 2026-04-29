@@ -105,30 +105,20 @@ pub(super) enum RegisterRef {
 }
 
 impl RegisterRef {
-    pub(super) fn parse(token: &str) -> Option<Self> {
-        if token == "ra" {
-            return Some(Self::ReturnAddress);
-        }
-        if token == "sp" {
-            return Some(Self::StackPointer);
-        }
+    pub(super) const fn direct(index: RegisterIndex) -> Self {
+        Self::Direct(index)
+    }
 
-        let r_count = token.bytes().take_while(|byte| *byte == b'r').count();
-        if r_count == 0 {
-            return None;
-        }
-        let digits = token.get(r_count..)?;
-        if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-            return None;
-        }
-        let parsed = digits.parse::<u8>().ok()?;
-        let base = RegisterIndex::new(parsed)?;
-        if r_count == 1 {
-            Some(Self::Direct(base))
-        } else {
-            let depth = u8::try_from(r_count - 1).ok()?;
-            Some(Self::Indirect { base, depth })
-        }
+    pub(super) const fn indirect(base: RegisterIndex, depth: u8) -> Self {
+        Self::Indirect { base, depth }
+    }
+
+    pub(super) const fn return_address() -> Self {
+        Self::ReturnAddress
+    }
+
+    pub(super) const fn stack_pointer() -> Self {
+        Self::StackPointer
     }
 }
 
@@ -138,7 +128,7 @@ pub(super) struct RegisterIndex {
 }
 
 impl RegisterIndex {
-    const fn new(value: u8) -> Option<Self> {
+    pub(super) const fn new(value: u8) -> Option<Self> {
         if value < REGISTER_COUNT_U8 {
             Some(Self { value })
         } else {
