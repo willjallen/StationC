@@ -1,0 +1,9 @@
+mod arithmetic;
+mod bitwise;
+mod branching;
+mod cli;
+mod comparisons;
+mod execution;
+mod parser;
+mod stack;
+mod support;

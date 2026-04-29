@@ -1,0 +1,675 @@
+//! IC10 virtual machine state.
+
+use std::{cmp::Ordering, fmt};
+
+use super::{
+    instruction::{
+        ApproxOperation, ApproxZeroOperation, BinaryOperation, BranchCondition, CompareOperation,
+        CompareZeroOperation, Instruction, JumpTarget, TernaryOperation, UnaryOperation,
+        ValueOperand,
+    },
+    program::Program,
+    registers::{RegisterFault, RegisterRef, Registers},
+    stack::{Stack, StackFault},
+    trace::TraceSink,
+};
+
+#[derive(Debug)]
+pub(super) struct Vm {
+    program: Program,
+    registers: Registers,
+    stack: Stack,
+    program_counter: usize,
+    random_state: u64,
+}
+
+impl Vm {
+    pub(super) const fn new(program: Program) -> Self {
+        Self {
+            program,
+            registers: Registers::new(),
+            stack: Stack::new(),
+            program_counter: 0,
+            random_state: 0x4d59_5df4_d0f3_3173,
+        }
+    }
+
+    pub(super) const fn program_counter(&self) -> usize {
+        self.program_counter
+    }
+
+    pub(super) const fn registers(&self) -> &Registers {
+        &self.registers
+    }
+
+    pub(super) const fn stack(&self) -> &Stack {
+        &self.stack
+    }
+
+    pub(super) fn run_until_yield_or_budget(
+        &mut self,
+        budget: u32,
+        trace: &mut TraceSink,
+    ) -> Result<RunResult, VmFault> {
+        let mut instructions_executed = 0;
+        for _ in 0..budget {
+            match self.step(trace)? {
+                StepStop::Continue => instructions_executed += 1,
+                StepStop::Yielded => {
+                    instructions_executed += 1;
+                    return Ok(RunResult {
+                        instructions_executed,
+                        stop: RunStop::Yielded,
+                    });
+                }
+                StepStop::Halted => {
+                    return Ok(RunResult {
+                        instructions_executed,
+                        stop: RunStop::Halted,
+                    });
+                }
+            }
+        }
+        Ok(RunResult {
+            instructions_executed,
+            stop: RunStop::BudgetExhausted,
+        })
+    }
+
+    fn step(&mut self, trace: &mut TraceSink) -> Result<StepStop, VmFault> {
+        let Some(program_instruction) = self.program.instruction(self.program_counter).cloned()
+        else {
+            return Ok(StepStop::Halted);
+        };
+
+        let current_pc = self.program_counter;
+        trace.instruction(current_pc, &program_instruction);
+        self.program_counter += 1;
+        self.execute(program_instruction.instruction, current_pc)
+    }
+
+    fn execute(
+        &mut self,
+        instruction: Instruction,
+        current_pc: usize,
+    ) -> Result<StepStop, VmFault> {
+        match instruction {
+            Instruction::Yield => Ok(StepStop::Yielded),
+            Instruction::Hcf => Err(VmFault::HaltAndCatchFire { pc: current_pc }),
+            Instruction::Move {
+                destination,
+                source,
+            } => self.execute_move(destination, &source),
+            Instruction::Unary {
+                operation,
+                destination,
+                source,
+            } => self.execute_unary(operation, destination, &source),
+            Instruction::Binary {
+                operation,
+                destination,
+                left,
+                right,
+            } => self.execute_binary(operation, destination, &left, &right),
+            Instruction::Ternary {
+                operation,
+                destination,
+                first,
+                second,
+                third,
+            } => self.execute_ternary(operation, destination, [&first, &second, &third]),
+            Instruction::Rand { destination } => {
+                let value = self.next_random();
+                self.write(destination, value)?;
+                Ok(StepStop::Continue)
+            }
+            Instruction::Select {
+                destination,
+                condition,
+                if_true,
+                if_false,
+            } => self.execute_select(destination, &condition, &if_true, &if_false),
+            Instruction::Jump {
+                target,
+                link,
+                relative,
+            } => {
+                self.jump(&target, link, relative, current_pc)?;
+                Ok(StepStop::Continue)
+            }
+            Instruction::Branch {
+                condition,
+                target,
+                link,
+                relative,
+            } => {
+                if self.branch_condition(&condition)? {
+                    self.jump(&target, link, relative, current_pc)?;
+                }
+                Ok(StepStop::Continue)
+            }
+            Instruction::Push { value } => self.execute_push(&value),
+            Instruction::Pop { destination } => self.execute_pop(destination),
+            Instruction::Peek { destination } => self.execute_peek(destination),
+            Instruction::Poke { address, value } => self.execute_poke(&address, &value),
+        }
+    }
+
+    fn execute_move(
+        &mut self,
+        destination: RegisterRef,
+        source: &ValueOperand,
+    ) -> Result<StepStop, VmFault> {
+        let value = self.value(source)?;
+        self.write(destination, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_unary(
+        &mut self,
+        operation: UnaryOperation,
+        destination: RegisterRef,
+        source: &ValueOperand,
+    ) -> Result<StepStop, VmFault> {
+        let value = Self::unary(operation, self.value(source)?)?;
+        self.write(destination, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_binary(
+        &mut self,
+        operation: BinaryOperation,
+        destination: RegisterRef,
+        left: &ValueOperand,
+        right: &ValueOperand,
+    ) -> Result<StepStop, VmFault> {
+        let left = self.value(left)?;
+        let right = self.value(right)?;
+        let value = Self::binary(operation, left, right)?;
+        self.write(destination, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_ternary(
+        &mut self,
+        operation: TernaryOperation,
+        destination: RegisterRef,
+        operands: [&ValueOperand; 3],
+    ) -> Result<StepStop, VmFault> {
+        let value = ternary(
+            operation,
+            self.value(operands[0])?,
+            self.value(operands[1])?,
+            self.value(operands[2])?,
+        );
+        self.write(destination, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_select(
+        &mut self,
+        destination: RegisterRef,
+        condition: &ValueOperand,
+        if_true: &ValueOperand,
+        if_false: &ValueOperand,
+    ) -> Result<StepStop, VmFault> {
+        let value = if numeric_eq(self.value(condition)?, 0.0) {
+            self.value(if_false)?
+        } else {
+            self.value(if_true)?
+        };
+        self.write(destination, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_push(&mut self, value: &ValueOperand) -> Result<StepStop, VmFault> {
+        let value = self.value(value)?;
+        let next_sp = self.stack.push(self.registers.stack_pointer(), value)?;
+        self.registers.set_stack_pointer(next_sp);
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_pop(&mut self, destination: RegisterRef) -> Result<StepStop, VmFault> {
+        let (value, next_sp) = self.stack.pop(self.registers.stack_pointer())?;
+        self.write(destination, value)?;
+        self.registers.set_stack_pointer(next_sp);
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_peek(&mut self, destination: RegisterRef) -> Result<StepStop, VmFault> {
+        let value = self.stack.peek(self.registers.stack_pointer())?;
+        self.write(destination, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_poke(
+        &mut self,
+        address: &ValueOperand,
+        value: &ValueOperand,
+    ) -> Result<StepStop, VmFault> {
+        let address = self.value(address)?;
+        let value = self.value(value)?;
+        self.stack.poke(address, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn value(&self, operand: &ValueOperand) -> Result<f64, VmFault> {
+        match operand {
+            ValueOperand::Register(register) => Ok(self.registers.read(*register)?),
+            ValueOperand::Number(value) => Ok(*value),
+            ValueOperand::Symbol(symbol) => self
+                .program
+                .constant(symbol)
+                .or_else(|| self.program.label(symbol).and_then(usize_to_f64))
+                .ok_or_else(|| VmFault::UnknownSymbol(symbol.clone())),
+        }
+    }
+
+    fn write(&mut self, register: RegisterRef, value: f64) -> Result<(), VmFault> {
+        Ok(self.registers.write(register, value)?)
+    }
+
+    fn unary(operation: UnaryOperation, value: f64) -> Result<f64, VmFault> {
+        let result = match operation {
+            UnaryOperation::Abs => value.abs(),
+            UnaryOperation::Ceil => value.ceil(),
+            UnaryOperation::Exp => value.exp(),
+            UnaryOperation::Floor => value.floor(),
+            UnaryOperation::Log => value.ln(),
+            UnaryOperation::Round => value.round(),
+            UnaryOperation::Sqrt => value.sqrt(),
+            UnaryOperation::Trunc => value.trunc(),
+            UnaryOperation::Acos => value.acos(),
+            UnaryOperation::Asin => value.asin(),
+            UnaryOperation::Atan => value.atan(),
+            UnaryOperation::Cos => value.cos(),
+            UnaryOperation::Sin => value.sin(),
+            UnaryOperation::Tan => value.tan(),
+            UnaryOperation::Not => i64_to_f64(!f64_to_i64(value)?)?,
+            UnaryOperation::Seqz => bool_to_number(numeric_eq(value, 0.0)),
+            UnaryOperation::Sgez => bool_to_number(value >= 0.0),
+            UnaryOperation::Sgtz => bool_to_number(value > 0.0),
+            UnaryOperation::Slez => bool_to_number(value <= 0.0),
+            UnaryOperation::Sltz => bool_to_number(value < 0.0),
+            UnaryOperation::Snan => bool_to_number(value.is_nan()),
+            UnaryOperation::Snanz => bool_to_number(!value.is_nan()),
+            UnaryOperation::Snez => bool_to_number(numeric_ne(value, 0.0)),
+        };
+        Ok(result)
+    }
+
+    fn binary(operation: BinaryOperation, left: f64, right: f64) -> Result<f64, VmFault> {
+        let result = match operation {
+            BinaryOperation::Add => left + right,
+            BinaryOperation::Sub => left - right,
+            BinaryOperation::Mul => left * right,
+            BinaryOperation::Div => left / right,
+            BinaryOperation::Mod => left.rem_euclid(right),
+            BinaryOperation::Pow => left.powf(right),
+            BinaryOperation::Max => left.max(right),
+            BinaryOperation::Min => left.min(right),
+            BinaryOperation::Atan2 => left.atan2(right),
+            BinaryOperation::And => i64_to_f64(f64_to_i64(left)? & f64_to_i64(right)?)?,
+            BinaryOperation::Or => i64_to_f64(f64_to_i64(left)? | f64_to_i64(right)?)?,
+            BinaryOperation::Xor => i64_to_f64(f64_to_i64(left)? ^ f64_to_i64(right)?)?,
+            BinaryOperation::Nor => i64_to_f64(!(f64_to_i64(left)? | f64_to_i64(right)?))?,
+            BinaryOperation::Sla | BinaryOperation::Sll => {
+                i64_to_f64(f64_to_i64(left)?.wrapping_shl(shift_amount(right)?))?
+            }
+            BinaryOperation::Sra => {
+                i64_to_f64(f64_to_i64(left)?.wrapping_shr(shift_amount(right)?))?
+            }
+            BinaryOperation::Srl => {
+                let left_bits = u64::from_ne_bytes(f64_to_i64(left)?.to_ne_bytes());
+                u64_to_f64(left_bits.wrapping_shr(shift_amount(right)?))?
+            }
+            BinaryOperation::Seq => bool_to_number(numeric_eq(left, right)),
+            BinaryOperation::Sne => bool_to_number(numeric_ne(left, right)),
+            BinaryOperation::Sge => bool_to_number(left >= right),
+            BinaryOperation::Sgt => bool_to_number(left > right),
+            BinaryOperation::Sle => bool_to_number(left <= right),
+            BinaryOperation::Slt => bool_to_number(left < right),
+            BinaryOperation::Sapz => bool_to_number(approximately_zero(left, right)),
+            BinaryOperation::Snaz => {
+                bool_to_number(!approximately_zero_without_epsilon_factor(left, right))
+            }
+        };
+        Ok(result)
+    }
+
+    fn branch_condition(&self, condition: &BranchCondition) -> Result<bool, VmFault> {
+        match condition {
+            BranchCondition::Compare {
+                operation,
+                left,
+                right,
+            } => Ok(compare(*operation, self.value(left)?, self.value(right)?)),
+            BranchCondition::CompareZero { operation, value } => {
+                Ok(compare_zero(*operation, self.value(value)?))
+            }
+            BranchCondition::Approx {
+                operation,
+                left,
+                right,
+                tolerance,
+            } => {
+                let approximately = approximately(
+                    self.value(left)?,
+                    self.value(right)?,
+                    self.value(tolerance)?,
+                );
+                Ok(match operation {
+                    ApproxOperation::Approximately => approximately,
+                    ApproxOperation::NotApproximately => !approximately,
+                })
+            }
+            BranchCondition::ApproxZero {
+                operation,
+                value,
+                tolerance,
+            } => {
+                let approximately = approximately_zero(self.value(value)?, self.value(tolerance)?);
+                Ok(match operation {
+                    ApproxZeroOperation::ApproximatelyZero => approximately,
+                    ApproxZeroOperation::NotApproximatelyZero => !approximately,
+                })
+            }
+            BranchCondition::Nan { value } => Ok(self.value(value)?.is_nan()),
+        }
+    }
+
+    fn jump(
+        &mut self,
+        target: &JumpTarget,
+        link: bool,
+        relative: bool,
+        current_pc: usize,
+    ) -> Result<(), VmFault> {
+        if link {
+            let return_address = usize_to_f64(self.program_counter)
+                .ok_or(VmFault::ProgramCounterTooLarge(self.program_counter))?;
+            self.write(RegisterRef::ReturnAddress, return_address)?;
+        }
+
+        let target = self.target_index(target, relative, current_pc)?;
+        if target > self.program.len() {
+            return Err(VmFault::InvalidJumpTarget(target));
+        }
+        self.program_counter = target;
+        Ok(())
+    }
+
+    fn target_index(
+        &self,
+        target: &JumpTarget,
+        relative: bool,
+        current_pc: usize,
+    ) -> Result<usize, VmFault> {
+        match target {
+            JumpTarget::Number(value) if relative => {
+                let offset = f64_to_i64(*value)?;
+                add_relative(current_pc, offset)
+            }
+            JumpTarget::Number(value) => numeric_index(*value),
+            JumpTarget::Register(register) if relative => {
+                let offset = f64_to_i64(self.registers.read(*register)?)?;
+                add_relative(current_pc, offset)
+            }
+            JumpTarget::Register(register) => numeric_index(self.registers.read(*register)?),
+            JumpTarget::Symbol(symbol) if relative => {
+                let value = self
+                    .program
+                    .constant(symbol)
+                    .ok_or_else(|| VmFault::UnknownSymbol(symbol.clone()))?;
+                let offset = f64_to_i64(value)?;
+                add_relative(current_pc, offset)
+            }
+            JumpTarget::Symbol(symbol) => self
+                .program
+                .label(symbol)
+                .or_else(|| {
+                    self.program
+                        .constant(symbol)
+                        .and_then(|value| numeric_index(value).ok())
+                })
+                .ok_or_else(|| VmFault::UnknownSymbol(symbol.clone())),
+        }
+    }
+
+    fn next_random(&mut self) -> f64 {
+        self.random_state = self
+            .random_state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        let upper = self.random_state >> 11;
+        #[allow(clippy::cast_precision_loss)]
+        let numerator = upper as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let denominator = (1_u64 << 53) as f64;
+        numerator / denominator
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StepStop {
+    Continue,
+    Yielded,
+    Halted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RunStop {
+    Yielded,
+    BudgetExhausted,
+    Halted,
+}
+
+impl fmt::Display for RunStop {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Yielded => formatter.write_str("yield"),
+            Self::BudgetExhausted => formatter.write_str("budget"),
+            Self::Halted => formatter.write_str("halt"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RunResult {
+    pub(super) instructions_executed: u32,
+    pub(super) stop: RunStop,
+}
+
+#[derive(Debug)]
+pub(super) enum VmFault {
+    UnknownSymbol(String),
+    InvalidJumpTarget(usize),
+    ProgramCounterTooLarge(usize),
+    InvalidNumericIndex(f64),
+    InvalidIntegerOperand(f64),
+    InvalidShiftOperand(i64),
+    RelativeJumpOutOfRange(i64),
+    IntegerNotExactlyRepresentable(i64),
+    UnsignedIntegerNotExactlyRepresentable(u64),
+    Register(RegisterFault),
+    Stack(StackFault),
+    HaltAndCatchFire { pc: usize },
+}
+
+impl fmt::Display for VmFault {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownSymbol(symbol) => write!(formatter, "unknown symbol `{symbol}`"),
+            Self::InvalidJumpTarget(target) => write!(formatter, "invalid jump target `{target}`"),
+            Self::ProgramCounterTooLarge(pc) => {
+                write!(formatter, "program counter too large: {pc}")
+            }
+            Self::InvalidNumericIndex(value) => {
+                write!(formatter, "invalid numeric index `{value}`")
+            }
+            Self::InvalidIntegerOperand(value) => {
+                write!(formatter, "expected integer operand, got `{value}`")
+            }
+            Self::InvalidShiftOperand(value) => {
+                write!(formatter, "invalid shift operand `{value}`")
+            }
+            Self::RelativeJumpOutOfRange(value) => {
+                write!(formatter, "relative jump offset out of range `{value}`")
+            }
+            Self::IntegerNotExactlyRepresentable(value) => {
+                write!(
+                    formatter,
+                    "integer result is not exactly representable: {value}"
+                )
+            }
+            Self::UnsignedIntegerNotExactlyRepresentable(value) => {
+                write!(
+                    formatter,
+                    "unsigned integer result is not exactly representable: {value}"
+                )
+            }
+            Self::Register(error) => write!(formatter, "{error}"),
+            Self::Stack(error) => write!(formatter, "{error}"),
+            Self::HaltAndCatchFire { pc } => write!(formatter, "hcf executed at pc {pc}"),
+        }
+    }
+}
+
+impl From<RegisterFault> for VmFault {
+    fn from(value: RegisterFault) -> Self {
+        Self::Register(value)
+    }
+}
+
+impl From<StackFault> for VmFault {
+    fn from(value: StackFault) -> Self {
+        Self::Stack(value)
+    }
+}
+
+fn ternary(operation: TernaryOperation, first: f64, second: f64, third: f64) -> f64 {
+    match operation {
+        TernaryOperation::Lerp => (second - first).mul_add(third.clamp(0.0, 1.0), first),
+        TernaryOperation::Sap => bool_to_number(approximately(first, second, third)),
+        TernaryOperation::Sna => bool_to_number(!approximately(first, second, third)),
+    }
+}
+
+fn compare(operation: CompareOperation, left: f64, right: f64) -> bool {
+    match operation {
+        CompareOperation::Eq => numeric_eq(left, right),
+        CompareOperation::Ne => numeric_ne(left, right),
+        CompareOperation::Ge => left >= right,
+        CompareOperation::Gt => left > right,
+        CompareOperation::Le => left <= right,
+        CompareOperation::Lt => left < right,
+    }
+}
+
+fn compare_zero(operation: CompareZeroOperation, value: f64) -> bool {
+    match operation {
+        CompareZeroOperation::Eq => numeric_eq(value, 0.0),
+        CompareZeroOperation::Ne => numeric_ne(value, 0.0),
+        CompareZeroOperation::Ge => value >= 0.0,
+        CompareZeroOperation::Gt => value > 0.0,
+        CompareZeroOperation::Le => value <= 0.0,
+        CompareZeroOperation::Lt => value < 0.0,
+    }
+}
+
+fn approximately(left: f64, right: f64, tolerance: f64) -> bool {
+    (left - right).abs() <= (tolerance * left.abs().max(right.abs())).max(f64::EPSILON * 8.0)
+}
+
+fn approximately_zero(value: f64, tolerance: f64) -> bool {
+    value.abs() <= (tolerance * value.abs()).max(f64::EPSILON * 8.0)
+}
+
+fn approximately_zero_without_epsilon_factor(value: f64, tolerance: f64) -> bool {
+    value.abs() <= (tolerance * value.abs()).max(f64::EPSILON)
+}
+
+const fn bool_to_number(value: bool) -> f64 {
+    if value { 1.0 } else { 0.0 }
+}
+
+#[allow(clippy::float_cmp)]
+fn numeric_eq(left: f64, right: f64) -> bool {
+    left == right
+}
+
+#[allow(clippy::float_cmp)]
+fn numeric_ne(left: f64, right: f64) -> bool {
+    left != right
+}
+
+fn numeric_index(value: f64) -> Result<usize, VmFault> {
+    if !value.is_finite() || value.fract() != 0.0 || value < 0.0 {
+        return Err(VmFault::InvalidNumericIndex(value));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let index = value as usize;
+    Ok(index)
+}
+
+fn add_relative(program_counter: usize, offset: i64) -> Result<usize, VmFault> {
+    match offset.cmp(&0) {
+        Ordering::Less => {
+            let magnitude = usize::try_from(offset.unsigned_abs())
+                .map_err(|_| VmFault::RelativeJumpOutOfRange(offset))?;
+            program_counter
+                .checked_sub(magnitude)
+                .ok_or(VmFault::InvalidJumpTarget(0))
+        }
+        Ordering::Equal => Ok(program_counter),
+        Ordering::Greater => {
+            let magnitude =
+                usize::try_from(offset).map_err(|_| VmFault::RelativeJumpOutOfRange(offset))?;
+            program_counter
+                .checked_add(magnitude)
+                .ok_or(VmFault::ProgramCounterTooLarge(program_counter))
+        }
+    }
+}
+
+fn usize_to_f64(value: usize) -> Option<f64> {
+    let value = u32::try_from(value).ok()?;
+    Some(f64::from(value))
+}
+
+fn shift_amount(value: f64) -> Result<u32, VmFault> {
+    let value = f64_to_i64(value)?;
+    u32::try_from(value).map_err(|_| VmFault::InvalidShiftOperand(value))
+}
+
+fn f64_to_i64(value: f64) -> Result<i64, VmFault> {
+    const I64_MIN_AS_F64: f64 = -9_223_372_036_854_775_808.0;
+    const I64_MAX_AS_F64: f64 = 9_223_372_036_854_775_807.0;
+
+    if !value.is_finite() || value.fract() != 0.0 {
+        return Err(VmFault::InvalidIntegerOperand(value));
+    }
+    if !(I64_MIN_AS_F64..=I64_MAX_AS_F64).contains(&value) {
+        return Err(VmFault::InvalidIntegerOperand(value));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    Ok(value as i64)
+}
+
+#[allow(clippy::cast_precision_loss, clippy::missing_const_for_fn)]
+fn i64_to_f64(value: i64) -> Result<f64, VmFault> {
+    const MAX_EXACT_INTEGER: u64 = 9_007_199_254_740_992;
+    if value.unsigned_abs() > MAX_EXACT_INTEGER {
+        return Err(VmFault::IntegerNotExactlyRepresentable(value));
+    }
+    Ok(value as f64)
+}
+
+#[allow(clippy::cast_precision_loss, clippy::missing_const_for_fn)]
+fn u64_to_f64(value: u64) -> Result<f64, VmFault> {
+    const MAX_EXACT_INTEGER: u64 = 9_007_199_254_740_992;
+    if value > MAX_EXACT_INTEGER {
+        return Err(VmFault::UnsignedIntegerNotExactlyRepresentable(value));
+    }
+    Ok(value as f64)
+}

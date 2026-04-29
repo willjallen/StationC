@@ -1392,23 +1392,35 @@ stationc/
         ram_bank_idle.ic10.tera
 
     tests/
-        compiler_lexer.rs
-        compiler_parser.rs
-        compiler_type_checker.rs
-        compiler_bytecode_encoder.rs
-        compiler_disassembler.rs
-        compiler_hash.rs
+        compiler.rs
+        compiler/
+            lexer.rs
+            parser.rs
+            type_checker.rs
+            bytecode_encoder.rs
+            disassembler.rs
+            hash.rs
 
-        sim_ic10_arithmetic.rs
-        sim_ic10_branching.rs
-        sim_ic10_stack.rs
-        sim_world_tick_budget.rs
-        sim_world_multi_chip.rs
-        sim_world_device_io.rs
-        sim_stationos_kernel_launch.rs
-        sim_stationos_await_sum.rs
-        sim_stationos_command_buffer.rs
-        sim_stationos_scheduler_scaling.rs
+        sim.rs
+        sim/
+            ic10/
+                arithmetic.rs
+                bitwise.rs
+                branching.rs
+                cli.rs
+                comparisons.rs
+                execution.rs
+                parser.rs
+                stack.rs
+            world/
+                tick_budget.rs
+                multi_chip.rs
+                device_io.rs
+            stationos/
+                kernel_launch.rs
+                await_sum.rs
+                command_buffer.rs
+                scheduler_scaling.rs
 
         fixtures/
             golden/
@@ -1440,7 +1452,7 @@ folder/mod.rs      root of that module folder
 folder/thing.rs    child module declared by folder/mod.rs
 ```
 
-Every Rust module directory in the tree above has a `mod.rs`. Leaf modules are plain `.rs` files. Cargo discovers integration tests from top-level `.rs` files directly under `tests/`; nested directories under `tests/` are for fixtures and support data, not standalone test crates.
+Every Rust module directory in the tree above has a `mod.rs`. Leaf modules are plain `.rs` files. Cargo discovers integration test crates from top-level `.rs` files directly under `tests/`; those harness files can declare ordinary nested modules such as `tests/sim/ic10/arithmetic.rs` to keep test layout aligned with `src/sim/ic10`.
 
 The code should be segmented by responsibility with top-level modules. The compiler toolchain lives under `compiler/`. The simulator stack lives under `sim/`, with clear layers:
 

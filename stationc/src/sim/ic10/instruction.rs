@@ -1,0 +1,215 @@
+//! Parsed IC10 instruction model.
+
+use std::fmt;
+
+use super::registers::RegisterRef;
+
+#[derive(Debug, Clone)]
+pub(super) struct ProgramInstruction {
+    pub(super) source_line: usize,
+    pub(super) text: String,
+    pub(super) instruction: Instruction,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum Instruction {
+    Yield,
+    Hcf,
+    Move {
+        destination: RegisterRef,
+        source: ValueOperand,
+    },
+    Unary {
+        operation: UnaryOperation,
+        destination: RegisterRef,
+        source: ValueOperand,
+    },
+    Binary {
+        operation: BinaryOperation,
+        destination: RegisterRef,
+        left: ValueOperand,
+        right: ValueOperand,
+    },
+    Ternary {
+        operation: TernaryOperation,
+        destination: RegisterRef,
+        first: ValueOperand,
+        second: ValueOperand,
+        third: ValueOperand,
+    },
+    Rand {
+        destination: RegisterRef,
+    },
+    Select {
+        destination: RegisterRef,
+        condition: ValueOperand,
+        if_true: ValueOperand,
+        if_false: ValueOperand,
+    },
+    Jump {
+        target: JumpTarget,
+        link: bool,
+        relative: bool,
+    },
+    Branch {
+        condition: BranchCondition,
+        target: JumpTarget,
+        link: bool,
+        relative: bool,
+    },
+    Push {
+        value: ValueOperand,
+    },
+    Pop {
+        destination: RegisterRef,
+    },
+    Peek {
+        destination: RegisterRef,
+    },
+    Poke {
+        address: ValueOperand,
+        value: ValueOperand,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum ValueOperand {
+    Register(RegisterRef),
+    Number(f64),
+    Symbol(String),
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum JumpTarget {
+    Number(f64),
+    Register(RegisterRef),
+    Symbol(String),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum UnaryOperation {
+    Abs,
+    Ceil,
+    Exp,
+    Floor,
+    Log,
+    Round,
+    Sqrt,
+    Trunc,
+    Acos,
+    Asin,
+    Atan,
+    Cos,
+    Sin,
+    Tan,
+    Not,
+    Seqz,
+    Sgez,
+    Sgtz,
+    Slez,
+    Sltz,
+    Snan,
+    Snanz,
+    Snez,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum BinaryOperation {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+    Max,
+    Min,
+    Atan2,
+    And,
+    Or,
+    Xor,
+    Nor,
+    Sla,
+    Sll,
+    Sra,
+    Srl,
+    Seq,
+    Sne,
+    Sge,
+    Sgt,
+    Sle,
+    Slt,
+    Sapz,
+    Snaz,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum TernaryOperation {
+    Lerp,
+    Sap,
+    Sna,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum BranchCondition {
+    Compare {
+        operation: CompareOperation,
+        left: ValueOperand,
+        right: ValueOperand,
+    },
+    CompareZero {
+        operation: CompareZeroOperation,
+        value: ValueOperand,
+    },
+    Approx {
+        operation: ApproxOperation,
+        left: ValueOperand,
+        right: ValueOperand,
+        tolerance: ValueOperand,
+    },
+    ApproxZero {
+        operation: ApproxZeroOperation,
+        value: ValueOperand,
+        tolerance: ValueOperand,
+    },
+    Nan {
+        value: ValueOperand,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum CompareOperation {
+    Eq,
+    Ne,
+    Ge,
+    Gt,
+    Le,
+    Lt,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum CompareZeroOperation {
+    Eq,
+    Ne,
+    Ge,
+    Gt,
+    Le,
+    Lt,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum ApproxOperation {
+    Approximately,
+    NotApproximately,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum ApproxZeroOperation {
+    ApproximatelyZero,
+    NotApproximatelyZero,
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
