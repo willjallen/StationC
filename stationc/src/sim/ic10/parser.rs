@@ -3,11 +3,12 @@
 use std::{collections::HashMap, fmt};
 
 use super::{
-    environment::DevicePort,
+    environment::{BatchMode, DevicePort},
     instruction::{
-        ApproxOperation, ApproxZeroOperation, BinaryOperation, BranchCondition, CompareOperation,
-        CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction, JumpTarget,
-        LogicFieldOperand, ProgramInstruction, TernaryOperation, UnaryOperation, ValueOperand,
+        ApproxOperation, ApproxZeroOperation, BatchModeOperand, BinaryOperation, BranchCondition,
+        CompareOperation, CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction,
+        JumpTarget, LogicFieldOperand, ProgramInstruction, TernaryOperation, UnaryOperation,
+        ValueOperand,
     },
     logic_types,
     program::Program,
@@ -133,8 +134,9 @@ pub(super) fn parse_program(source: &str) -> Result<Program, ParseError> {
         if tokens.is_empty() {
             continue;
         }
+        let token_refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
 
-        if parse_directive(&tokens, line_number, &mut aliases, &mut constants)? {
+        if parse_directive(&token_refs, line_number, &mut aliases, &mut constants)? {
             continue;
         }
 
@@ -142,7 +144,7 @@ pub(super) fn parse_program(source: &str) -> Result<Program, ParseError> {
         instructions.push(ProgramInstruction {
             source_line: line_number,
             text: tokens.join(" "),
-            instruction: parse_instruction(&tokens, context)?,
+            instruction: parse_instruction(&token_refs, context)?,
         });
     }
 
@@ -179,8 +181,31 @@ fn parse_labels<'line>(
     Ok(line)
 }
 
-fn tokenize(line: &str) -> Vec<&str> {
-    line.split_whitespace().collect()
+fn tokenize(line: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+
+    for character in line.chars() {
+        match character {
+            '"' => {
+                in_quote = !in_quote;
+                current.push(character);
+            }
+            character if character.is_whitespace() && !in_quote => {
+                if !current.is_empty() {
+                    tokens.push(current);
+                    current = String::new();
+                }
+            }
+            character => current.push(character),
+        }
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
 }
 
 fn parse_directive(
@@ -252,6 +277,7 @@ fn parse_instruction(
         "move" | "rand" | "select" => parse_register_instruction(tokens, context),
         "push" | "pop" | "peek" | "poke" => parse_local_stack_instruction(tokens, context),
         "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
+        "lb" | "lbn" => parse_batch_logic_instruction(tokens, context),
         "get" | "put" | "getd" | "putd" => parse_device_stack_instruction(tokens, context),
         "j" | "jal" | "jr" => parse_jump_instruction(tokens, context),
         mnemonic => parse_math_or_branch_instruction(mnemonic, tokens, context),
@@ -404,6 +430,45 @@ fn parse_store_logic_instruction(
         device,
         field: parse_logic_field(tokens[2], context),
         value: parse_value(tokens[3], context),
+    })
+}
+
+fn parse_batch_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    match tokens[0] {
+        "lb" => parse_batch_load_logic_instruction(tokens, context),
+        "lbn" => parse_batch_load_logic_by_name_instruction(tokens, context),
+        mnemonic => unsupported_instruction(mnemonic, context.line_number),
+    }
+}
+
+fn parse_batch_load_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 5, context.line_number)?;
+    Ok(Instruction::BatchLoadLogic {
+        destination: parse_register(tokens[1], context)?,
+        prefab_hash: parse_value(tokens[2], context),
+        name_hash: None,
+        field: parse_logic_field(tokens[3], context),
+        mode: parse_batch_mode(tokens[4], context),
+    })
+}
+
+fn parse_batch_load_logic_by_name_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 6, context.line_number)?;
+    Ok(Instruction::BatchLoadLogic {
+        destination: parse_register(tokens[1], context)?,
+        prefab_hash: parse_value(tokens[2], context),
+        name_hash: Some(parse_value(tokens[3], context)),
+        field: parse_logic_field(tokens[4], context),
+        mode: parse_batch_mode(tokens[5], context),
     })
 }
 
@@ -806,6 +871,16 @@ fn parse_logic_field(token: &str, context: ParseContext<'_>) -> LogicFieldOperan
     }
 }
 
+fn parse_batch_mode(token: &str, context: ParseContext<'_>) -> BatchModeOperand {
+    match token {
+        "Average" => BatchModeOperand::Direct(BatchMode::Average),
+        "Sum" => BatchModeOperand::Direct(BatchMode::Sum),
+        "Minimum" => BatchModeOperand::Direct(BatchMode::Minimum),
+        "Maximum" => BatchModeOperand::Direct(BatchMode::Maximum),
+        _ => BatchModeOperand::Dynamic(parse_value(token, context)),
+    }
+}
+
 fn is_dynamic_logic_field(token: &str, context: ParseContext<'_>) -> bool {
     matches!(context.aliases.get(token), Some(AliasTarget::Register(_)))
         || parse_register_token(token).is_some()
@@ -888,8 +963,27 @@ fn parse_number(token: &str) -> Option<f64> {
         "nan" => Some(f64::NAN),
         "pinf" => Some(f64::INFINITY),
         "ninf" => Some(f64::NEG_INFINITY),
-        _ => parse_numeric_literal(token).or_else(|| logic_types::value_from_symbol(token)),
+        _ => parse_hash_literal(token)
+            .or_else(|| parse_numeric_literal(token))
+            .or_else(|| logic_types::value_from_symbol(token)),
     }
+}
+
+fn parse_hash_literal(token: &str) -> Option<f64> {
+    let name = token.strip_prefix("HASH(\"")?.strip_suffix("\")")?;
+    Some(f64::from(crc32(name.as_bytes())))
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFF_u32;
+    for byte in bytes {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            let mask = 0_u32.wrapping_sub(crc & 1);
+            crc = (crc >> 1) ^ (0xEDB8_8320_u32 & mask);
+        }
+    }
+    !crc
 }
 
 fn parse_numeric_literal(token: &str) -> Option<f64> {

@@ -50,6 +50,16 @@ yield
 }
 
 #[test]
+fn hash_literal_uses_standard_crc32_value() -> TestResult {
+    let output = run("\
+move r0 HASH(\"123456789\")
+yield
+")?;
+
+    assert_register(&output.ic10, 0, 3_421_780_262.0)
+}
+
+#[test]
 fn label_symbols_can_be_moved_as_numeric_values() -> TestResult {
     let output = run("\
 move r0 done

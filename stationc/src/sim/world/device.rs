@@ -86,6 +86,14 @@ impl Device {
         self.reference_id = Some(reference_id);
     }
 
+    pub(super) const fn prefab_hash(&self) -> f64 {
+        self.prefab_hash
+    }
+
+    pub(super) const fn name_hash(&self) -> f64 {
+        self.name_hash
+    }
+
     pub(super) fn ic_housing_body(reference_id: ReferenceId) -> Self {
         let mut device = Self::new()
             .with_logic(device_logic::ON, 1.0)

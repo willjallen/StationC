@@ -2,7 +2,10 @@
 
 use std::fmt;
 
-use super::{environment::DevicePort, registers::RegisterRef};
+use super::{
+    environment::{BatchMode, DevicePort},
+    registers::RegisterRef,
+};
 
 #[derive(Debug, Clone)]
 pub(super) struct ProgramInstruction {
@@ -75,6 +78,13 @@ pub(super) enum Instruction {
         device: DeviceOperand,
         field: LogicFieldOperand,
     },
+    BatchLoadLogic {
+        destination: RegisterRef,
+        prefab_hash: ValueOperand,
+        name_hash: Option<ValueOperand>,
+        field: LogicFieldOperand,
+        mode: BatchModeOperand,
+    },
     StoreLogic {
         device: DeviceOperand,
         field: LogicFieldOperand,
@@ -115,6 +125,12 @@ pub(super) enum DeviceOperand {
 #[derive(Debug, Clone)]
 pub(super) enum LogicFieldOperand {
     Named(String),
+    Dynamic(ValueOperand),
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum BatchModeOperand {
+    Direct(BatchMode),
     Dynamic(ValueOperand),
 }
 

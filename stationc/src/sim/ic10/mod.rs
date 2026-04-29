@@ -14,7 +14,7 @@ mod trace;
 use std::{env, error::Error as StdError, fmt, fs, path::PathBuf, process::ExitCode};
 
 pub use environment::{
-    DevicePort, DeviceTarget, EnvironmentFault, EnvironmentOperation, Ic10Environment,
+    BatchMode, DevicePort, DeviceTarget, EnvironmentFault, EnvironmentOperation, Ic10Environment,
     NoEnvironment, ReferenceId,
 };
 use ic10::{Ic10 as CoreIc10, RunStop};
@@ -261,6 +261,8 @@ pub enum ErrorCode {
     InvalidReferenceId,
     /// A numeric value could not be used as an indirect device pin.
     InvalidDevicePortIndex,
+    /// A numeric value could not be used as a batch mode.
+    InvalidBatchMode,
     /// An operand expected to be an integer was not an integer.
     InvalidIntegerOperand,
     /// A shift count was invalid.
@@ -370,6 +372,7 @@ const fn ic10_fault_code(error: &ic10::Ic10Fault) -> ErrorCode {
         ic10::Ic10Fault::InvalidNumericIndex(_) => ErrorCode::InvalidNumericIndex,
         ic10::Ic10Fault::InvalidReferenceId(_) => ErrorCode::InvalidReferenceId,
         ic10::Ic10Fault::InvalidDevicePortIndex(_) => ErrorCode::InvalidDevicePortIndex,
+        ic10::Ic10Fault::InvalidBatchMode(_) => ErrorCode::InvalidBatchMode,
         ic10::Ic10Fault::InvalidIntegerOperand(_) => ErrorCode::InvalidIntegerOperand,
         ic10::Ic10Fault::InvalidShiftOperand(_) => ErrorCode::InvalidShiftOperand,
         ic10::Ic10Fault::RelativeJumpOutOfRange(_) => ErrorCode::RelativeJumpOutOfRange,

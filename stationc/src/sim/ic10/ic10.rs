@@ -4,12 +4,13 @@ use std::{cmp::Ordering, fmt};
 
 use super::{
     environment::{
-        DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment, NoEnvironment, ReferenceId,
+        BatchMode, DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment, NoEnvironment,
+        ReferenceId,
     },
     instruction::{
-        ApproxOperation, ApproxZeroOperation, BinaryOperation, BranchCondition, CompareOperation,
-        CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction, JumpTarget,
-        LogicFieldOperand, TernaryOperation, UnaryOperation, ValueOperand,
+        ApproxOperation, ApproxZeroOperation, BatchModeOperand, BinaryOperation, BranchCondition,
+        CompareOperation, CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction,
+        JumpTarget, LogicFieldOperand, TernaryOperation, UnaryOperation, ValueOperand,
     },
     logic_types,
     program::Program,
@@ -113,6 +114,7 @@ impl Ic10 {
         self.execute(program_instruction.instruction, current_pc, environment)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn execute<E: Ic10Environment>(
         &mut self,
         instruction: Instruction,
@@ -183,6 +185,22 @@ impl Ic10 {
                 device,
                 field,
             } => self.execute_load_logic(environment, destination, &device, &field),
+            Instruction::BatchLoadLogic {
+                destination,
+                prefab_hash,
+                name_hash,
+                field,
+                mode,
+            } => self.execute_batch_load_logic(
+                environment,
+                BatchLoadOperands {
+                    destination,
+                    prefab_hash: &prefab_hash,
+                    name_hash: name_hash.as_ref(),
+                    field: &field,
+                    mode: &mode,
+                },
+            ),
             Instruction::StoreLogic {
                 device,
                 field,
@@ -313,6 +331,23 @@ impl Ic10 {
         Ok(step_stop(environment))
     }
 
+    fn execute_batch_load_logic<E: Ic10Environment>(
+        &mut self,
+        environment: &mut E,
+        operands: BatchLoadOperands<'_>,
+    ) -> Result<StepStop, Ic10Fault> {
+        let prefab_hash = self.value(operands.prefab_hash)?;
+        let name_hash = operands
+            .name_hash
+            .map(|operand| self.value(operand))
+            .transpose()?;
+        let field = self.logic_field(operands.field)?;
+        let mode = self.batch_mode(operands.mode)?;
+        let value = environment.batch_load_logic(prefab_hash, name_hash, field, mode)?;
+        self.write(operands.destination, value)?;
+        Ok(step_stop(environment))
+    }
+
     fn execute_store_logic<E: Ic10Environment>(
         &self,
         environment: &mut E,
@@ -373,6 +408,16 @@ impl Ic10 {
             LogicFieldOperand::Dynamic(value) => {
                 let value = self.value(value)?;
                 logic_types::name_from_value(value).ok_or(Ic10Fault::UnknownLogicType(value))
+            }
+        }
+    }
+
+    fn batch_mode(&self, operand: &BatchModeOperand) -> Result<BatchMode, Ic10Fault> {
+        match operand {
+            BatchModeOperand::Direct(mode) => Ok(*mode),
+            BatchModeOperand::Dynamic(value) => {
+                let value = self.value(value)?;
+                BatchMode::from_f64(value).ok_or(Ic10Fault::InvalidBatchMode(value))
             }
         }
     }
@@ -592,6 +637,15 @@ enum StepStop {
     Halted,
 }
 
+#[derive(Clone, Copy)]
+struct BatchLoadOperands<'a> {
+    destination: RegisterRef,
+    prefab_hash: &'a ValueOperand,
+    name_hash: Option<&'a ValueOperand>,
+    field: &'a LogicFieldOperand,
+    mode: &'a BatchModeOperand,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RunStop {
     Yielded,
@@ -626,6 +680,7 @@ pub(super) enum Ic10Fault {
     InvalidNumericIndex(f64),
     InvalidReferenceId(f64),
     InvalidDevicePortIndex(f64),
+    InvalidBatchMode(f64),
     InvalidIntegerOperand(f64),
     InvalidShiftOperand(i64),
     RelativeJumpOutOfRange(i64),
@@ -655,6 +710,7 @@ impl fmt::Display for Ic10Fault {
             Self::InvalidDevicePortIndex(value) => {
                 write!(formatter, "invalid device port index `{value}`")
             }
+            Self::InvalidBatchMode(value) => write!(formatter, "invalid batch mode `{value}`"),
             Self::InvalidIntegerOperand(value) => {
                 write!(formatter, "expected integer operand, got `{value}`")
             }

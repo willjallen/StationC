@@ -100,11 +100,47 @@ pub enum DeviceTarget {
     ReferenceId(ReferenceId),
 }
 
+/// Aggregation mode used by IC10 batch logic reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchMode {
+    /// Arithmetic mean of all matching values.
+    Average,
+    /// Sum of all matching values.
+    Sum,
+    /// Lowest matching value.
+    Minimum,
+    /// Highest matching value.
+    Maximum,
+}
+
+impl BatchMode {
+    /// Resolves the IC10 numeric batch-mode representation.
+    #[must_use]
+    pub fn from_f64(value: f64) -> Option<Self> {
+        if !value.is_finite() || value.fract() != 0.0 {
+            return None;
+        }
+        if !(0.0..=3.0).contains(&value) {
+            return None;
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        match value as i32 {
+            0 => Some(Self::Average),
+            1 => Some(Self::Sum),
+            2 => Some(Self::Minimum),
+            3 => Some(Self::Maximum),
+            _ => None,
+        }
+    }
+}
+
 /// Kind of operation requested from an IC10 environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvironmentOperation {
     /// Read a device logic field.
     LoadLogic,
+    /// Read and aggregate logic fields from matching devices.
+    BatchLoadLogic,
     /// Write a device logic field.
     StoreLogic,
     /// Read device stack memory.
@@ -117,6 +153,7 @@ impl fmt::Display for EnvironmentOperation {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::LoadLogic => formatter.write_str("load logic"),
+            Self::BatchLoadLogic => formatter.write_str("batch load logic"),
             Self::StoreLogic => formatter.write_str("store logic"),
             Self::GetStack => formatter.write_str("get stack"),
             Self::PutStack => formatter.write_str("put stack"),
@@ -191,6 +228,19 @@ pub trait Ic10Environment {
     /// Returns an [`EnvironmentFault`] if the target or field cannot be read.
     fn load_logic(&mut self, target: DeviceTarget, field: &str) -> Result<f64, EnvironmentFault>;
 
+    /// Reads and aggregates a logic field from all matching world devices.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EnvironmentFault`] if the host cannot complete the batch read.
+    fn batch_load_logic(
+        &mut self,
+        prefab_hash: f64,
+        name_hash: Option<f64>,
+        field: &str,
+        mode: BatchMode,
+    ) -> Result<f64, EnvironmentFault>;
+
     /// Writes a logic field on a device target.
     ///
     /// # Errors
@@ -237,6 +287,18 @@ impl Ic10Environment for NoEnvironment {
     fn load_logic(&mut self, _target: DeviceTarget, _field: &str) -> Result<f64, EnvironmentFault> {
         Err(EnvironmentFault::WorldContextRequired {
             operation: EnvironmentOperation::LoadLogic,
+        })
+    }
+
+    fn batch_load_logic(
+        &mut self,
+        _prefab_hash: f64,
+        _name_hash: Option<f64>,
+        _field: &str,
+        _mode: BatchMode,
+    ) -> Result<f64, EnvironmentFault> {
+        Err(EnvironmentFault::WorldContextRequired {
+            operation: EnvironmentOperation::BatchLoadLogic,
         })
     }
 

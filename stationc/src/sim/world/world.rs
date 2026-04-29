@@ -2,7 +2,9 @@
 
 use std::{error::Error as StdError, fmt};
 
-use crate::sim::ic10::{DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment, ReferenceId};
+use crate::sim::ic10::{
+    BatchMode, DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment, ReferenceId,
+};
 
 use super::{
     device::Device,
@@ -246,6 +248,42 @@ impl Ic10Environment for WorldIc10Context<'_> {
         Ok(value)
     }
 
+    fn batch_load_logic(
+        &mut self,
+        prefab_hash: f64,
+        name_hash: Option<f64>,
+        field: &str,
+        mode: BatchMode,
+    ) -> Result<f64, EnvironmentFault> {
+        let mut reads = Vec::new();
+        let query = BatchReadQuery {
+            prefab_hash,
+            name_hash,
+            field,
+        };
+        collect_batch_read(
+            self.current_reference_id,
+            &*self.current_device,
+            query,
+            &mut reads,
+        )?;
+        for device in self.devices.iter() {
+            let Some(reference_id) = device.reference_id() else {
+                continue;
+            };
+            collect_batch_read(reference_id, device, query, &mut reads)?;
+        }
+        for housing in self.ic_housings.iter() {
+            collect_batch_read(housing.reference_id(), housing.device(), query, &mut reads)?;
+        }
+
+        let value = aggregate_batch_values(&reads, mode);
+        for (_, target) in reads {
+            self.record_access(WorldAccessOperation::Read, target);
+        }
+        Ok(value)
+    }
+
     fn store_logic(
         &mut self,
         target: DeviceTarget,
@@ -359,6 +397,76 @@ impl WorldIc10Context<'_> {
             operation,
             target,
         });
+    }
+}
+
+#[derive(Clone, Copy)]
+struct BatchReadQuery<'a> {
+    prefab_hash: f64,
+    name_hash: Option<f64>,
+    field: &'a str,
+}
+
+fn collect_batch_read(
+    reference_id: ReferenceId,
+    device: &Device,
+    query: BatchReadQuery<'_>,
+    reads: &mut Vec<(f64, WorldAccessTarget)>,
+) -> Result<(), EnvironmentFault> {
+    if !batch_device_matches(device, query.prefab_hash, query.name_hash) {
+        return Ok(());
+    }
+    let value = device.load_logic(query.field)?;
+    reads.push((
+        value,
+        WorldAccessTarget::DeviceLogic {
+            reference_id,
+            field: query.field.to_owned(),
+        },
+    ));
+    Ok(())
+}
+
+fn batch_device_matches(device: &Device, prefab_hash: f64, name_hash: Option<f64>) -> bool {
+    if !same_ic10_number(device.prefab_hash(), prefab_hash) {
+        return false;
+    }
+    name_hash.is_none_or(|value| same_ic10_number(device.name_hash(), value))
+}
+
+#[allow(clippy::float_cmp)]
+const fn same_ic10_number(left: f64, right: f64) -> bool {
+    left == right
+}
+
+fn aggregate_batch_values(reads: &[(f64, WorldAccessTarget)], mode: BatchMode) -> f64 {
+    if reads.is_empty() {
+        return empty_batch_value(mode);
+    }
+
+    match mode {
+        BatchMode::Average => {
+            let sum = reads.iter().map(|(value, _)| value).sum::<f64>();
+            let count = u32::try_from(reads.len()).unwrap_or(u32::MAX);
+            sum / f64::from(count)
+        }
+        BatchMode::Sum => reads.iter().map(|(value, _)| value).sum(),
+        BatchMode::Minimum => reads
+            .iter()
+            .map(|(value, _)| *value)
+            .fold(f64::INFINITY, f64::min),
+        BatchMode::Maximum => reads
+            .iter()
+            .map(|(value, _)| *value)
+            .fold(f64::NEG_INFINITY, f64::max),
+    }
+}
+
+const fn empty_batch_value(mode: BatchMode) -> f64 {
+    match mode {
+        BatchMode::Average => f64::NAN,
+        BatchMode::Sum | BatchMode::Minimum => 0.0,
+        BatchMode::Maximum => f64::NEG_INFINITY,
     }
 }
 
