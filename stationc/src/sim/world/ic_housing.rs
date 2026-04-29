@@ -1,16 +1,16 @@
 //! IC housing model.
 
-use crate::sim::ic10::{DevicePort, Error, ReferenceId, Vm};
+use crate::sim::ic10::{DevicePort, Error, Ic10, ReferenceId};
 
 use super::device::Device;
 
 pub(super) const PIN_COUNT: usize = 6;
 
-/// A simulated IC housing with one IC10 VM, one housing body, and six pins.
+/// A simulated IC housing with one IC10 program, one housing body, and six pins.
 #[derive(Debug)]
 pub struct IcHousing {
     pub(super) reference_id: ReferenceId,
-    pub(super) vm: Vm,
+    pub(super) ic10: Ic10,
     pub(super) device: Device,
     pub(super) pins: [Option<ReferenceId>; PIN_COUNT],
 }
@@ -19,7 +19,7 @@ impl IcHousing {
     pub(super) fn from_source(reference_id: ReferenceId, source: &str) -> Result<Self, Error> {
         Ok(Self {
             reference_id,
-            vm: Vm::from_source(source)?,
+            ic10: Ic10::from_source(source)?,
             device: Device::ic_housing_body(reference_id),
             pins: [None; PIN_COUNT],
         })
@@ -31,16 +31,16 @@ impl IcHousing {
         self.reference_id
     }
 
-    /// Returns the IC10 virtual machine installed in this housing.
+    /// Returns the IC10 simulator installed in this housing.
     #[must_use]
-    pub const fn vm(&self) -> &Vm {
-        &self.vm
+    pub const fn ic10(&self) -> &Ic10 {
+        &self.ic10
     }
 
-    /// Returns the mutable IC10 virtual machine installed in this housing.
+    /// Returns the mutable IC10 simulator installed in this housing.
     #[must_use]
-    pub const fn vm_mut(&mut self) -> &mut Vm {
-        &mut self.vm
+    pub const fn ic10_mut(&mut self) -> &mut Ic10 {
+        &mut self.ic10
     }
 
     /// Returns the world-facing device body of this IC housing.

@@ -12,12 +12,12 @@ slt r5 4 5
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_register(&output.vm, 1, 1.0)?;
-    assert_register(&output.vm, 2, 1.0)?;
-    assert_register(&output.vm, 3, 1.0)?;
-    assert_register(&output.vm, 4, 1.0)?;
-    assert_register(&output.vm, 5, 1.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_register(&output.ic10, 1, 1.0)?;
+    assert_register(&output.ic10, 2, 1.0)?;
+    assert_register(&output.ic10, 3, 1.0)?;
+    assert_register(&output.ic10, 4, 1.0)?;
+    assert_register(&output.ic10, 5, 1.0)
 }
 
 #[test]
@@ -32,12 +32,12 @@ sltz r5 -1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_register(&output.vm, 1, 1.0)?;
-    assert_register(&output.vm, 2, 1.0)?;
-    assert_register(&output.vm, 3, 1.0)?;
-    assert_register(&output.vm, 4, 1.0)?;
-    assert_register(&output.vm, 5, 1.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_register(&output.ic10, 1, 1.0)?;
+    assert_register(&output.ic10, 2, 1.0)?;
+    assert_register(&output.ic10, 3, 1.0)?;
+    assert_register(&output.ic10, 4, 1.0)?;
+    assert_register(&output.ic10, 5, 1.0)
 }
 
 #[test]
@@ -52,12 +52,12 @@ slt r5 5 5
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 0.0)?;
-    assert_register(&output.vm, 1, 0.0)?;
-    assert_register(&output.vm, 2, 0.0)?;
-    assert_register(&output.vm, 3, 0.0)?;
-    assert_register(&output.vm, 4, 0.0)?;
-    assert_register(&output.vm, 5, 0.0)
+    assert_register(&output.ic10, 0, 0.0)?;
+    assert_register(&output.ic10, 1, 0.0)?;
+    assert_register(&output.ic10, 2, 0.0)?;
+    assert_register(&output.ic10, 3, 0.0)?;
+    assert_register(&output.ic10, 4, 0.0)?;
+    assert_register(&output.ic10, 5, 0.0)
 }
 
 #[test]
@@ -68,8 +68,8 @@ select r1 0 11 22
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 11.0)?;
-    assert_register(&output.vm, 1, 22.0)
+    assert_register(&output.ic10, 0, 11.0)?;
+    assert_register(&output.ic10, 1, 22.0)
 }
 
 #[test]
@@ -82,10 +82,10 @@ snaz r3 2 0.5
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_register(&output.vm, 1, 1.0)?;
-    assert_register(&output.vm, 2, 1.0)?;
-    assert_register(&output.vm, 3, 1.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_register(&output.ic10, 1, 1.0)?;
+    assert_register(&output.ic10, 2, 1.0)?;
+    assert_register(&output.ic10, 3, 1.0)
 }
 
 #[test]
@@ -98,8 +98,8 @@ snanz r3 4
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_register(&output.vm, 1, 0.0)?;
-    assert_register(&output.vm, 2, 0.0)?;
-    assert_register(&output.vm, 3, 1.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_register(&output.ic10, 1, 0.0)?;
+    assert_register(&output.ic10, 2, 0.0)?;
+    assert_register(&output.ic10, 3, 1.0)
 }

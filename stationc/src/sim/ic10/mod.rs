@@ -1,13 +1,14 @@
 //! IC10 simulator support.
 
 mod environment;
+#[allow(clippy::module_inception)]
+mod ic10;
 mod instruction;
 mod parser;
 mod program;
 mod registers;
 mod stack;
 mod trace;
-mod vm;
 
 use std::{env, error::Error as StdError, fmt, fs, path::PathBuf, process::ExitCode};
 
@@ -15,12 +16,12 @@ pub use environment::{
     DevicePort, DeviceTarget, EnvironmentFault, EnvironmentOperation, Ic10Environment,
     NoEnvironment, ReferenceId,
 };
+use ic10::{Ic10 as CoreIc10, RunStop};
 use parser::parse_program;
 use registers::REGISTER_COUNT as INTERNAL_REGISTER_COUNT;
 use stack::STACK_SIZE as INTERNAL_STACK_SIZE;
 pub use trace::TraceEvent;
 use trace::TraceSink;
-use vm::{RunStop, Vm as CoreVm};
 
 const DEFAULT_TICKS: u32 = 1;
 const DEFAULT_BUDGET: u32 = 128;
@@ -31,14 +32,14 @@ pub const REGISTER_COUNT: usize = INTERNAL_REGISTER_COUNT;
 /// Number of values in IC10 stack memory.
 pub const STACK_SIZE: usize = INTERNAL_STACK_SIZE;
 
-/// A standalone IC10 virtual machine with parsed program and mutable state.
+/// A standalone IC10 simulator with parsed program and mutable state.
 #[derive(Debug)]
-pub struct Vm {
-    inner: CoreVm,
+pub struct Ic10 {
+    inner: CoreIc10,
 }
 
-impl Vm {
-    /// Parses IC10 source and creates a fresh virtual machine.
+impl Ic10 {
+    /// Parses IC10 source and creates a fresh simulator.
     ///
     /// # Errors
     ///
@@ -46,7 +47,7 @@ impl Vm {
     pub fn from_source(source: &str) -> Result<Self, Error> {
         let program = parse_program(source)?;
         Ok(Self {
-            inner: CoreVm::new(program),
+            inner: CoreIc10::new(program),
         })
     }
 
@@ -149,7 +150,7 @@ impl Vm {
         self.inner.stack().values().get(index).copied()
     }
 
-    /// Returns a copy of the current VM state.
+    /// Returns a copy of the current IC10 state.
     #[must_use]
     pub const fn snapshot(&self) -> Snapshot {
         Snapshot {
@@ -162,7 +163,7 @@ impl Vm {
     }
 }
 
-/// A copy of observable IC10 virtual-machine state.
+/// A copy of observable IC10 state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Snapshot {
     /// Current program counter.
@@ -186,8 +187,8 @@ pub struct TickResult {
     pub stop: StopReason,
 }
 
-impl From<vm::RunResult> for TickResult {
-    fn from(value: vm::RunResult) -> Self {
+impl From<ic10::RunResult> for TickResult {
+    fn from(value: ic10::RunResult) -> Self {
         Self {
             instructions_executed: value.instructions_executed,
             stop: value.stop.into(),
@@ -343,9 +344,9 @@ const fn parse_error_code(error: parser::ParseErrorCode) -> ErrorCode {
     }
 }
 
-impl From<vm::VmFault> for Error {
-    fn from(value: vm::VmFault) -> Self {
-        let code = vm_fault_code(&value);
+impl From<ic10::Ic10Fault> for Error {
+    fn from(value: ic10::Ic10Fault) -> Self {
+        let code = ic10_fault_code(&value);
         Self {
             code,
             line: None,
@@ -354,46 +355,48 @@ impl From<vm::VmFault> for Error {
     }
 }
 
-const fn vm_fault_code(error: &vm::VmFault) -> ErrorCode {
+const fn ic10_fault_code(error: &ic10::Ic10Fault) -> ErrorCode {
     match error {
-        vm::VmFault::UnknownSymbol(_) => ErrorCode::UnknownSymbol,
-        vm::VmFault::InvalidJumpTarget(_) => ErrorCode::InvalidJumpTarget,
-        vm::VmFault::ProgramCounterTooLarge(_) => ErrorCode::ProgramCounterTooLarge,
-        vm::VmFault::InvalidNumericIndex(_) => ErrorCode::InvalidNumericIndex,
-        vm::VmFault::InvalidReferenceId(_) => ErrorCode::InvalidReferenceId,
-        vm::VmFault::InvalidDevicePortIndex(_) => ErrorCode::InvalidDevicePortIndex,
-        vm::VmFault::InvalidIntegerOperand(_) => ErrorCode::InvalidIntegerOperand,
-        vm::VmFault::InvalidShiftOperand(_) => ErrorCode::InvalidShiftOperand,
-        vm::VmFault::RelativeJumpOutOfRange(_) => ErrorCode::RelativeJumpOutOfRange,
-        vm::VmFault::IntegerNotExactlyRepresentable(_) => ErrorCode::IntegerNotExactlyRepresentable,
-        vm::VmFault::UnsignedIntegerNotExactlyRepresentable(_) => {
+        ic10::Ic10Fault::UnknownSymbol(_) => ErrorCode::UnknownSymbol,
+        ic10::Ic10Fault::InvalidJumpTarget(_) => ErrorCode::InvalidJumpTarget,
+        ic10::Ic10Fault::ProgramCounterTooLarge(_) => ErrorCode::ProgramCounterTooLarge,
+        ic10::Ic10Fault::InvalidNumericIndex(_) => ErrorCode::InvalidNumericIndex,
+        ic10::Ic10Fault::InvalidReferenceId(_) => ErrorCode::InvalidReferenceId,
+        ic10::Ic10Fault::InvalidDevicePortIndex(_) => ErrorCode::InvalidDevicePortIndex,
+        ic10::Ic10Fault::InvalidIntegerOperand(_) => ErrorCode::InvalidIntegerOperand,
+        ic10::Ic10Fault::InvalidShiftOperand(_) => ErrorCode::InvalidShiftOperand,
+        ic10::Ic10Fault::RelativeJumpOutOfRange(_) => ErrorCode::RelativeJumpOutOfRange,
+        ic10::Ic10Fault::IntegerNotExactlyRepresentable(_) => {
+            ErrorCode::IntegerNotExactlyRepresentable
+        }
+        ic10::Ic10Fault::UnsignedIntegerNotExactlyRepresentable(_) => {
             ErrorCode::UnsignedIntegerNotExactlyRepresentable
         }
-        vm::VmFault::Register(registers::RegisterFault::InvalidIndirectIndex(_)) => {
+        ic10::Ic10Fault::Register(registers::RegisterFault::InvalidIndirectIndex(_)) => {
             ErrorCode::InvalidIndirectRegisterIndex
         }
-        vm::VmFault::Stack(stack::StackFault::AddressOutOfRange { .. }) => {
+        ic10::Ic10Fault::Stack(stack::StackFault::AddressOutOfRange { .. }) => {
             ErrorCode::StackAddressOutOfRange
         }
-        vm::VmFault::Environment(environment::EnvironmentFault::WorldContextRequired {
+        ic10::Ic10Fault::Environment(environment::EnvironmentFault::WorldContextRequired {
             ..
         }) => ErrorCode::WorldContextRequired,
-        vm::VmFault::Environment(environment::EnvironmentFault::DevicePortUnbound { .. }) => {
-            ErrorCode::DevicePortUnbound
-        }
-        vm::VmFault::Environment(environment::EnvironmentFault::UnknownReferenceId { .. }) => {
-            ErrorCode::UnknownReferenceId
-        }
-        vm::VmFault::Environment(environment::EnvironmentFault::UnknownLogicField { .. }) => {
-            ErrorCode::UnknownLogicField
-        }
-        vm::VmFault::Environment(environment::EnvironmentFault::ReadOnlyLogicField { .. }) => {
-            ErrorCode::ReadOnlyLogicField
-        }
-        vm::VmFault::Environment(environment::EnvironmentFault::StackAddressOutOfRange {
+        ic10::Ic10Fault::Environment(environment::EnvironmentFault::DevicePortUnbound {
+            ..
+        }) => ErrorCode::DevicePortUnbound,
+        ic10::Ic10Fault::Environment(environment::EnvironmentFault::UnknownReferenceId {
+            ..
+        }) => ErrorCode::UnknownReferenceId,
+        ic10::Ic10Fault::Environment(environment::EnvironmentFault::UnknownLogicField {
+            ..
+        }) => ErrorCode::UnknownLogicField,
+        ic10::Ic10Fault::Environment(environment::EnvironmentFault::ReadOnlyLogicField {
+            ..
+        }) => ErrorCode::ReadOnlyLogicField,
+        ic10::Ic10Fault::Environment(environment::EnvironmentFault::StackAddressOutOfRange {
             ..
         }) => ErrorCode::DeviceStackAddressOutOfRange,
-        vm::VmFault::HaltAndCatchFire { .. } => ErrorCode::HaltAndCatchFire,
+        ic10::Ic10Fault::HaltAndCatchFire { .. } => ErrorCode::HaltAndCatchFire,
     }
 }
 
@@ -405,7 +408,7 @@ enum SimError {
         source: std::io::Error,
     },
     Parse(parser::ParseError),
-    Runtime(vm::VmFault),
+    Runtime(ic10::Ic10Fault),
 }
 
 impl fmt::Display for SimError {
@@ -427,8 +430,8 @@ impl From<parser::ParseError> for SimError {
     }
 }
 
-impl From<vm::VmFault> for SimError {
-    fn from(value: vm::VmFault) -> Self {
+impl From<ic10::Ic10Fault> for SimError {
+    fn from(value: ic10::Ic10Fault) -> Self {
         Self::Runtime(value)
     }
 }
@@ -459,16 +462,16 @@ fn run_from_env() -> Result<(), SimError> {
         source,
     })?;
     let program = parse_program(&source)?;
-    let mut vm = CoreVm::new(program);
+    let mut ic10 = CoreIc10::new(program);
     let mut trace_sink = TraceSink::stdout(command.trace);
 
     for tick in 0..command.ticks {
-        let result = vm.run_until_yield_or_budget(command.budget, &mut trace_sink)?;
+        let result = ic10.run_until_yield_or_budget(command.budget, &mut trace_sink)?;
         if command.trace {
             println!(
                 "tick {tick}: executed {} instruction(s), pc={}, stop={}",
                 result.instructions_executed,
-                vm.program_counter(),
+                ic10.program_counter(),
                 result.stop
             );
         }
@@ -478,7 +481,7 @@ fn run_from_env() -> Result<(), SimError> {
     }
 
     if command.trace {
-        println!("{}", vm.registers());
+        println!("{}", ic10.registers());
     }
 
     Ok(())

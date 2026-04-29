@@ -1,14 +1,14 @@
 use std::{error::Error as StdError, io};
 
 use stationc::sim::ic10::{
-    Error as SimError, ErrorCode, StopReason, TickResult, TraceEvent, TracedTickResult, Vm,
+    Error as SimError, ErrorCode, Ic10, StopReason, TickResult, TraceEvent, TracedTickResult,
 };
 
 pub(super) type TestResult<T = ()> = Result<T, Box<dyn StdError>>;
 
 #[derive(Debug)]
 pub(super) struct RunOutput {
-    pub(super) vm: Vm,
+    pub(super) ic10: Ic10,
     pub(super) tick: TickResult,
 }
 
@@ -17,25 +17,25 @@ pub(super) fn run(source: &str) -> TestResult<RunOutput> {
 }
 
 pub(super) fn run_with_budget(source: &str, budget: u32) -> TestResult<RunOutput> {
-    let mut vm = Vm::from_source(source)?;
-    let tick = vm.run_until_yield_or_budget(budget)?;
-    Ok(RunOutput { vm, tick })
+    let mut ic10 = Ic10::from_source(source)?;
+    let tick = ic10.run_until_yield_or_budget(budget)?;
+    Ok(RunOutput { ic10, tick })
 }
 
 pub(super) fn run_ticks(
     source: &str,
     ticks: u32,
     budget: u32,
-) -> TestResult<(Vm, Vec<TickResult>)> {
-    let mut vm = Vm::from_source(source)?;
-    let results = vm.run_ticks(ticks, budget)?;
-    Ok((vm, results))
+) -> TestResult<(Ic10, Vec<TickResult>)> {
+    let mut ic10 = Ic10::from_source(source)?;
+    let results = ic10.run_ticks(ticks, budget)?;
+    Ok((ic10, results))
 }
 
-pub(super) fn run_traced(source: &str, budget: u32) -> TestResult<(Vm, TracedTickResult)> {
-    let mut vm = Vm::from_source(source)?;
-    let tick = vm.run_until_yield_or_budget_with_trace(budget)?;
-    Ok((vm, tick))
+pub(super) fn run_traced(source: &str, budget: u32) -> TestResult<(Ic10, TracedTickResult)> {
+    let mut ic10 = Ic10::from_source(source)?;
+    let tick = ic10.run_until_yield_or_budget_with_trace(budget)?;
+    Ok((ic10, tick))
 }
 
 pub(super) fn parse_failure(
@@ -43,7 +43,7 @@ pub(super) fn parse_failure(
     expected_code: ErrorCode,
     expected_line: usize,
 ) -> TestResult {
-    match Vm::from_source(source) {
+    match Ic10::from_source(source) {
         Ok(_) => Err(test_error("expected parse failure")),
         Err(error) => {
             assert_error_code(&error, expected_code)?;
@@ -58,8 +58,8 @@ pub(super) fn runtime_failure(
     budget: u32,
     expected_code: ErrorCode,
 ) -> TestResult<SimError> {
-    let mut vm = Vm::from_source(source)?;
-    match vm.run_until_yield_or_budget(budget) {
+    let mut ic10 = Ic10::from_source(source)?;
+    match ic10.run_until_yield_or_budget(budget) {
         Ok(tick) => Err(test_error(format!(
             "expected runtime failure, got {tick:?}"
         ))),
@@ -71,23 +71,23 @@ pub(super) fn runtime_failure(
     }
 }
 
-pub(super) fn assert_register(vm: &Vm, index: usize, expected: f64) -> TestResult {
-    let actual = vm
+pub(super) fn assert_register(ic10: &Ic10, index: usize, expected: f64) -> TestResult {
+    let actual = ic10
         .register(index)
         .ok_or_else(|| test_error(format!("missing register r{index}")))?;
     assert_number(actual, expected, &format!("r{index}"))
 }
 
-pub(super) fn assert_ra(vm: &Vm, expected: f64) -> TestResult {
-    assert_number(vm.return_address(), expected, "ra")
+pub(super) fn assert_ra(ic10: &Ic10, expected: f64) -> TestResult {
+    assert_number(ic10.return_address(), expected, "ra")
 }
 
-pub(super) fn assert_sp(vm: &Vm, expected: f64) -> TestResult {
-    assert_number(vm.stack_pointer(), expected, "sp")
+pub(super) fn assert_sp(ic10: &Ic10, expected: f64) -> TestResult {
+    assert_number(ic10.stack_pointer(), expected, "sp")
 }
 
-pub(super) fn assert_pc(vm: &Vm, expected: usize) -> TestResult {
-    let actual = vm.program_counter();
+pub(super) fn assert_pc(ic10: &Ic10, expected: usize) -> TestResult {
+    let actual = ic10.program_counter();
     if actual == expected {
         Ok(())
     } else {
@@ -97,8 +97,8 @@ pub(super) fn assert_pc(vm: &Vm, expected: usize) -> TestResult {
     }
 }
 
-pub(super) fn assert_stack(vm: &Vm, index: usize, expected: f64) -> TestResult {
-    let actual = vm
+pub(super) fn assert_stack(ic10: &Ic10, index: usize, expected: f64) -> TestResult {
+    let actual = ic10
         .stack_value(index)
         .ok_or_else(|| test_error(format!("missing stack[{index}]")))?;
     assert_number(actual, expected, &format!("stack[{index}]"))

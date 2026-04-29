@@ -9,7 +9,7 @@ add r2 r0 r1
 yield
 ")?;
 
-    assert_register(&output.vm, 2, 3.0)
+    assert_register(&output.ic10, 2, 3.0)
 }
 
 #[test]
@@ -22,7 +22,7 @@ add total total increment
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 12.0)
+    assert_register(&output.ic10, 0, 12.0)
 }
 
 #[test]
@@ -34,9 +34,9 @@ div r2 r1 5
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 5.0)?;
-    assert_register(&output.vm, 1, 15.0)?;
-    assert_register(&output.vm, 2, 3.0)
+    assert_register(&output.ic10, 0, 5.0)?;
+    assert_register(&output.ic10, 1, 15.0)?;
+    assert_register(&output.ic10, 2, 3.0)
 }
 
 #[test]
@@ -51,12 +51,12 @@ mod r5 22 -10
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 10.0)?;
-    assert_register(&output.vm, 1, 2.0)?;
-    assert_register(&output.vm, 2, 1.0)?;
-    assert_register(&output.vm, 3, 2.0)?;
-    assert_register(&output.vm, 4, 18.0)?;
-    assert_register(&output.vm, 5, 18.0)
+    assert_register(&output.ic10, 0, 10.0)?;
+    assert_register(&output.ic10, 1, 2.0)?;
+    assert_register(&output.ic10, 2, 1.0)?;
+    assert_register(&output.ic10, 3, 2.0)?;
+    assert_register(&output.ic10, 4, 18.0)?;
+    assert_register(&output.ic10, 5, 18.0)
 }
 
 #[test]
@@ -67,8 +67,8 @@ mod r1 22 -20
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_register(&output.vm, 1, 18.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_register(&output.ic10, 1, 18.0)
 }
 
 #[test]
@@ -81,10 +81,10 @@ sqrt r3 81
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 3.0)?;
-    assert_register(&output.vm, 1, 8.0)?;
-    assert_register(&output.vm, 2, 12.0)?;
-    assert_register(&output.vm, 3, 9.0)
+    assert_register(&output.ic10, 0, 3.0)?;
+    assert_register(&output.ic10, 1, 8.0)?;
+    assert_register(&output.ic10, 2, 12.0)?;
+    assert_register(&output.ic10, 3, 9.0)
 }
 
 #[test]
@@ -97,10 +97,10 @@ round r3 2.5
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 2.0)?;
-    assert_register(&output.vm, 1, 3.0)?;
-    assert_register(&output.vm, 2, -2.0)?;
-    assert_register(&output.vm, 3, 3.0)
+    assert_register(&output.ic10, 0, 2.0)?;
+    assert_register(&output.ic10, 1, 3.0)?;
+    assert_register(&output.ic10, 2, -2.0)?;
+    assert_register(&output.ic10, 3, 3.0)
 }
 
 #[test]
@@ -112,9 +112,9 @@ pow r2 2 8
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_register(&output.vm, 1, 0.0)?;
-    assert_register(&output.vm, 2, 256.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_register(&output.ic10, 1, 0.0)?;
+    assert_register(&output.ic10, 2, 256.0)
 }
 
 #[test]
@@ -130,13 +130,13 @@ atan2 r4 0 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 0.0)?;
-    assert_register(&output.vm, 1, 1.0)?;
-    assert_register(&output.vm, 2, 0.0)?;
-    assert_register(&output.vm, 3, 0.0)?;
-    assert_register(&output.vm, 4, 0.0)?;
-    assert_register(&output.vm, 5, 0.0)?;
-    assert_register(&output.vm, 6, 0.0)
+    assert_register(&output.ic10, 0, 0.0)?;
+    assert_register(&output.ic10, 1, 1.0)?;
+    assert_register(&output.ic10, 2, 0.0)?;
+    assert_register(&output.ic10, 3, 0.0)?;
+    assert_register(&output.ic10, 4, 0.0)?;
+    assert_register(&output.ic10, 5, 0.0)?;
+    assert_register(&output.ic10, 6, 0.0)
 }
 
 #[test]
@@ -148,7 +148,7 @@ lerp r2 10 20 2
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 12.5)?;
-    assert_register(&output.vm, 1, 10.0)?;
-    assert_register(&output.vm, 2, 20.0)
+    assert_register(&output.ic10, 0, 12.5)?;
+    assert_register(&output.ic10, 1, 10.0)?;
+    assert_register(&output.ic10, 2, 20.0)
 }

@@ -12,9 +12,9 @@ pop r1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 22.0)?;
-    assert_register(&output.vm, 1, 11.0)?;
-    assert_sp(&output.vm, 0.0)
+    assert_register(&output.ic10, 0, 22.0)?;
+    assert_register(&output.ic10, 1, 11.0)?;
+    assert_sp(&output.ic10, 0.0)
 }
 
 #[test]
@@ -26,9 +26,9 @@ peek r1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 33.0)?;
-    assert_register(&output.vm, 1, 33.0)?;
-    assert_sp(&output.vm, 1.0)
+    assert_register(&output.ic10, 0, 33.0)?;
+    assert_register(&output.ic10, 1, 33.0)?;
+    assert_sp(&output.ic10, 1.0)
 }
 
 #[test]
@@ -41,9 +41,9 @@ pop r1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 44.0)?;
-    assert_register(&output.vm, 1, 44.0)?;
-    assert_sp(&output.vm, 511.0)
+    assert_register(&output.ic10, 0, 44.0)?;
+    assert_register(&output.ic10, 1, 44.0)?;
+    assert_sp(&output.ic10, 511.0)
 }
 
 #[test]
@@ -55,9 +55,9 @@ peek r0
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 77.0)?;
-    assert_stack(&output.vm, 0, 77.0)?;
-    assert_sp(&output.vm, 1.0)
+    assert_register(&output.ic10, 0, 77.0)?;
+    assert_stack(&output.ic10, 0, 77.0)?;
+    assert_sp(&output.ic10, 1.0)
 }
 
 #[test]

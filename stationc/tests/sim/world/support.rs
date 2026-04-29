@@ -53,7 +53,7 @@ pub(super) fn assert_housing_register(
 ) -> TestResult {
     let housing = housing(world, reference_id)?;
     let actual = housing
-        .vm()
+        .ic10()
         .register(register)
         .ok_or_else(|| test_error(format!("missing register r{register}")))?;
     assert_number(actual, expected, &format!("r{register}"))

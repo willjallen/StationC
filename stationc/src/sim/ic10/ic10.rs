@@ -1,4 +1,4 @@
-//! IC10 virtual machine state.
+//! IC10 simulator state.
 
 use std::{cmp::Ordering, fmt};
 
@@ -18,7 +18,7 @@ use super::{
 };
 
 #[derive(Debug)]
-pub(super) struct Vm {
+pub(super) struct Ic10 {
     program: Program,
     registers: Registers,
     stack: Stack,
@@ -26,7 +26,7 @@ pub(super) struct Vm {
     random_state: u64,
 }
 
-impl Vm {
+impl Ic10 {
     pub(super) const fn new(program: Program) -> Self {
         Self {
             program,
@@ -53,7 +53,7 @@ impl Vm {
         &mut self,
         budget: u32,
         trace: &mut TraceSink,
-    ) -> Result<RunResult, VmFault> {
+    ) -> Result<RunResult, Ic10Fault> {
         let mut environment = NoEnvironment;
         self.run_until_yield_or_budget_with_environment(budget, trace, &mut environment)
     }
@@ -63,7 +63,7 @@ impl Vm {
         budget: u32,
         trace: &mut TraceSink,
         environment: &mut E,
-    ) -> Result<RunResult, VmFault> {
+    ) -> Result<RunResult, Ic10Fault> {
         let mut instructions_executed = 0;
         for _ in 0..budget {
             match self.step(trace, environment)? {
@@ -93,7 +93,7 @@ impl Vm {
         &mut self,
         trace: &mut TraceSink,
         environment: &mut E,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let Some(program_instruction) = self.program.instruction(self.program_counter).cloned()
         else {
             return Ok(StepStop::Halted);
@@ -110,10 +110,10 @@ impl Vm {
         instruction: Instruction,
         current_pc: usize,
         environment: &mut E,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         match instruction {
             Instruction::Yield => Ok(StepStop::Yielded),
-            Instruction::Hcf => Err(VmFault::HaltAndCatchFire { pc: current_pc }),
+            Instruction::Hcf => Err(Ic10Fault::HaltAndCatchFire { pc: current_pc }),
             Instruction::Move {
                 destination,
                 source,
@@ -197,7 +197,7 @@ impl Vm {
         &mut self,
         destination: RegisterRef,
         source: &ValueOperand,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let value = self.value(source)?;
         self.write(destination, value)?;
         Ok(StepStop::Continue)
@@ -208,7 +208,7 @@ impl Vm {
         operation: UnaryOperation,
         destination: RegisterRef,
         source: &ValueOperand,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let value = Self::unary(operation, self.value(source)?)?;
         self.write(destination, value)?;
         Ok(StepStop::Continue)
@@ -220,7 +220,7 @@ impl Vm {
         destination: RegisterRef,
         left: &ValueOperand,
         right: &ValueOperand,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let left = self.value(left)?;
         let right = self.value(right)?;
         let value = Self::binary(operation, left, right)?;
@@ -233,7 +233,7 @@ impl Vm {
         operation: TernaryOperation,
         destination: RegisterRef,
         operands: [&ValueOperand; 3],
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let value = ternary(
             operation,
             self.value(operands[0])?,
@@ -250,7 +250,7 @@ impl Vm {
         condition: &ValueOperand,
         if_true: &ValueOperand,
         if_false: &ValueOperand,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let value = if numeric_eq(self.value(condition)?, 0.0) {
             self.value(if_false)?
         } else {
@@ -260,21 +260,21 @@ impl Vm {
         Ok(StepStop::Continue)
     }
 
-    fn execute_push(&mut self, value: &ValueOperand) -> Result<StepStop, VmFault> {
+    fn execute_push(&mut self, value: &ValueOperand) -> Result<StepStop, Ic10Fault> {
         let value = self.value(value)?;
         let next_sp = self.stack.push(self.registers.stack_pointer(), value)?;
         self.registers.set_stack_pointer(next_sp);
         Ok(StepStop::Continue)
     }
 
-    fn execute_pop(&mut self, destination: RegisterRef) -> Result<StepStop, VmFault> {
+    fn execute_pop(&mut self, destination: RegisterRef) -> Result<StepStop, Ic10Fault> {
         let (value, next_sp) = self.stack.pop(self.registers.stack_pointer())?;
         self.write(destination, value)?;
         self.registers.set_stack_pointer(next_sp);
         Ok(StepStop::Continue)
     }
 
-    fn execute_peek(&mut self, destination: RegisterRef) -> Result<StepStop, VmFault> {
+    fn execute_peek(&mut self, destination: RegisterRef) -> Result<StepStop, Ic10Fault> {
         let value = self.stack.peek(self.registers.stack_pointer())?;
         self.write(destination, value)?;
         Ok(StepStop::Continue)
@@ -284,7 +284,7 @@ impl Vm {
         &mut self,
         address: &ValueOperand,
         value: &ValueOperand,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let address = self.value(address)?;
         let value = self.value(value)?;
         self.stack.poke(address, value)?;
@@ -297,7 +297,7 @@ impl Vm {
         destination: RegisterRef,
         device: &DeviceOperand,
         field: &str,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let target = self.device_target(device)?;
         let value = environment.load_logic(target, field)?;
         self.write(destination, value)?;
@@ -310,7 +310,7 @@ impl Vm {
         device: &DeviceOperand,
         field: &str,
         value: &ValueOperand,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let target = self.device_target(device)?;
         let value = self.value(value)?;
         environment.store_logic(target, field, value)?;
@@ -323,7 +323,7 @@ impl Vm {
         destination: RegisterRef,
         device: &DeviceOperand,
         address: &ValueOperand,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let target = self.device_target(device)?;
         let address = numeric_index(self.value(address)?)?;
         let value = environment.get_stack(target, address)?;
@@ -337,7 +337,7 @@ impl Vm {
         device: &DeviceOperand,
         address: &ValueOperand,
         value: &ValueOperand,
-    ) -> Result<StepStop, VmFault> {
+    ) -> Result<StepStop, Ic10Fault> {
         let target = self.device_target(device)?;
         let address = numeric_index(self.value(address)?)?;
         let value = self.value(value)?;
@@ -345,7 +345,7 @@ impl Vm {
         Ok(StepStop::Continue)
     }
 
-    fn value(&self, operand: &ValueOperand) -> Result<f64, VmFault> {
+    fn value(&self, operand: &ValueOperand) -> Result<f64, Ic10Fault> {
         match operand {
             ValueOperand::Register(register) => Ok(self.registers.read(*register)?),
             ValueOperand::Number(value) => Ok(*value),
@@ -353,15 +353,15 @@ impl Vm {
                 .program
                 .constant(symbol)
                 .or_else(|| self.program.label(symbol).and_then(usize_to_f64))
-                .ok_or_else(|| VmFault::UnknownSymbol(symbol.clone())),
+                .ok_or_else(|| Ic10Fault::UnknownSymbol(symbol.clone())),
         }
     }
 
-    fn write(&mut self, register: RegisterRef, value: f64) -> Result<(), VmFault> {
+    fn write(&mut self, register: RegisterRef, value: f64) -> Result<(), Ic10Fault> {
         Ok(self.registers.write(register, value)?)
     }
 
-    fn device_target(&self, operand: &DeviceOperand) -> Result<DeviceTarget, VmFault> {
+    fn device_target(&self, operand: &DeviceOperand) -> Result<DeviceTarget, Ic10Fault> {
         match operand {
             DeviceOperand::Port(port) => Ok(DeviceTarget::Port(self.device_port(*port)?)),
             DeviceOperand::Reference(reference) => Ok(DeviceTarget::ReferenceId(reference_id(
@@ -370,20 +370,20 @@ impl Vm {
         }
     }
 
-    fn device_port(&self, operand: DevicePortOperand) -> Result<DevicePort, VmFault> {
+    fn device_port(&self, operand: DevicePortOperand) -> Result<DevicePort, Ic10Fault> {
         match operand {
             DevicePortOperand::Direct(port) => Ok(port),
             DevicePortOperand::Indirect(register) => {
                 let index = self.registers.read(register)?;
                 let index = u8::try_from(numeric_index(index)?)
-                    .map_err(|_| VmFault::InvalidDevicePortIndex(index))?;
+                    .map_err(|_| Ic10Fault::InvalidDevicePortIndex(index))?;
                 DevicePort::from_pin_index(index)
-                    .ok_or_else(|| VmFault::InvalidDevicePortIndex(f64::from(index)))
+                    .ok_or_else(|| Ic10Fault::InvalidDevicePortIndex(f64::from(index)))
             }
         }
     }
 
-    fn unary(operation: UnaryOperation, value: f64) -> Result<f64, VmFault> {
+    fn unary(operation: UnaryOperation, value: f64) -> Result<f64, Ic10Fault> {
         let result = match operation {
             UnaryOperation::Abs => value.abs(),
             UnaryOperation::Ceil => value.ceil(),
@@ -412,7 +412,7 @@ impl Vm {
         Ok(result)
     }
 
-    fn binary(operation: BinaryOperation, left: f64, right: f64) -> Result<f64, VmFault> {
+    fn binary(operation: BinaryOperation, left: f64, right: f64) -> Result<f64, Ic10Fault> {
         let result = match operation {
             BinaryOperation::Add => left + right,
             BinaryOperation::Sub => left - right,
@@ -451,7 +451,7 @@ impl Vm {
         Ok(result)
     }
 
-    fn branch_condition(&self, condition: &BranchCondition) -> Result<bool, VmFault> {
+    fn branch_condition(&self, condition: &BranchCondition) -> Result<bool, Ic10Fault> {
         match condition {
             BranchCondition::Compare {
                 operation,
@@ -498,16 +498,16 @@ impl Vm {
         link: bool,
         relative: bool,
         current_pc: usize,
-    ) -> Result<(), VmFault> {
+    ) -> Result<(), Ic10Fault> {
         if link {
             let return_address = usize_to_f64(self.program_counter)
-                .ok_or(VmFault::ProgramCounterTooLarge(self.program_counter))?;
+                .ok_or(Ic10Fault::ProgramCounterTooLarge(self.program_counter))?;
             self.write(RegisterRef::ReturnAddress, return_address)?;
         }
 
         let target = self.target_index(target, relative, current_pc)?;
         if target > self.program.len() {
-            return Err(VmFault::InvalidJumpTarget(target));
+            return Err(Ic10Fault::InvalidJumpTarget(target));
         }
         self.program_counter = target;
         Ok(())
@@ -518,7 +518,7 @@ impl Vm {
         target: &JumpTarget,
         relative: bool,
         current_pc: usize,
-    ) -> Result<usize, VmFault> {
+    ) -> Result<usize, Ic10Fault> {
         match target {
             JumpTarget::Number(value) if relative => {
                 let offset = f64_to_i64(*value)?;
@@ -534,7 +534,7 @@ impl Vm {
                 let value = self
                     .program
                     .constant(symbol)
-                    .ok_or_else(|| VmFault::UnknownSymbol(symbol.clone()))?;
+                    .ok_or_else(|| Ic10Fault::UnknownSymbol(symbol.clone()))?;
                 let offset = f64_to_i64(value)?;
                 add_relative(current_pc, offset)
             }
@@ -546,7 +546,7 @@ impl Vm {
                         .constant(symbol)
                         .and_then(|value| numeric_index(value).ok())
                 })
-                .ok_or_else(|| VmFault::UnknownSymbol(symbol.clone())),
+                .ok_or_else(|| Ic10Fault::UnknownSymbol(symbol.clone())),
         }
     }
 
@@ -595,7 +595,7 @@ pub(super) struct RunResult {
 }
 
 #[derive(Debug)]
-pub(super) enum VmFault {
+pub(super) enum Ic10Fault {
     UnknownSymbol(String),
     InvalidJumpTarget(usize),
     ProgramCounterTooLarge(usize),
@@ -613,7 +613,7 @@ pub(super) enum VmFault {
     HaltAndCatchFire { pc: usize },
 }
 
-impl fmt::Display for VmFault {
+impl fmt::Display for Ic10Fault {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownSymbol(symbol) => write!(formatter, "unknown symbol `{symbol}`"),
@@ -659,19 +659,19 @@ impl fmt::Display for VmFault {
     }
 }
 
-impl From<RegisterFault> for VmFault {
+impl From<RegisterFault> for Ic10Fault {
     fn from(value: RegisterFault) -> Self {
         Self::Register(value)
     }
 }
 
-impl From<StackFault> for VmFault {
+impl From<StackFault> for Ic10Fault {
     fn from(value: StackFault) -> Self {
         Self::Stack(value)
     }
 }
 
-impl From<EnvironmentFault> for VmFault {
+impl From<EnvironmentFault> for Ic10Fault {
     fn from(value: EnvironmentFault) -> Self {
         Self::Environment(value)
     }
@@ -748,42 +748,42 @@ fn numeric_ne(left: f64, right: f64) -> bool {
     left != right
 }
 
-fn numeric_index(value: f64) -> Result<usize, VmFault> {
+fn numeric_index(value: f64) -> Result<usize, Ic10Fault> {
     if !value.is_finite() || value.fract() != 0.0 || value < 0.0 {
-        return Err(VmFault::InvalidNumericIndex(value));
+        return Err(Ic10Fault::InvalidNumericIndex(value));
     }
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let index = value as usize;
     Ok(index)
 }
 
-fn reference_id(value: f64) -> Result<ReferenceId, VmFault> {
+fn reference_id(value: f64) -> Result<ReferenceId, Ic10Fault> {
     if !value.is_finite() || value.fract() != 0.0 || value < 0.0 {
-        return Err(VmFault::InvalidReferenceId(value));
+        return Err(Ic10Fault::InvalidReferenceId(value));
     }
     if value > f64::from(u32::MAX) {
-        return Err(VmFault::InvalidReferenceId(value));
+        return Err(Ic10Fault::InvalidReferenceId(value));
     }
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     Ok(ReferenceId::new(value as u32))
 }
 
-fn add_relative(program_counter: usize, offset: i64) -> Result<usize, VmFault> {
+fn add_relative(program_counter: usize, offset: i64) -> Result<usize, Ic10Fault> {
     match offset.cmp(&0) {
         Ordering::Less => {
             let magnitude = usize::try_from(offset.unsigned_abs())
-                .map_err(|_| VmFault::RelativeJumpOutOfRange(offset))?;
+                .map_err(|_| Ic10Fault::RelativeJumpOutOfRange(offset))?;
             program_counter
                 .checked_sub(magnitude)
-                .ok_or(VmFault::InvalidJumpTarget(0))
+                .ok_or(Ic10Fault::InvalidJumpTarget(0))
         }
         Ordering::Equal => Ok(program_counter),
         Ordering::Greater => {
             let magnitude =
-                usize::try_from(offset).map_err(|_| VmFault::RelativeJumpOutOfRange(offset))?;
+                usize::try_from(offset).map_err(|_| Ic10Fault::RelativeJumpOutOfRange(offset))?;
             program_counter
                 .checked_add(magnitude)
-                .ok_or(VmFault::ProgramCounterTooLarge(program_counter))
+                .ok_or(Ic10Fault::ProgramCounterTooLarge(program_counter))
         }
     }
 }
@@ -793,39 +793,39 @@ fn usize_to_f64(value: usize) -> Option<f64> {
     Some(f64::from(value))
 }
 
-fn shift_amount(value: f64) -> Result<u32, VmFault> {
+fn shift_amount(value: f64) -> Result<u32, Ic10Fault> {
     let value = f64_to_i64(value)?;
-    u32::try_from(value).map_err(|_| VmFault::InvalidShiftOperand(value))
+    u32::try_from(value).map_err(|_| Ic10Fault::InvalidShiftOperand(value))
 }
 
-fn f64_to_i64(value: f64) -> Result<i64, VmFault> {
+fn f64_to_i64(value: f64) -> Result<i64, Ic10Fault> {
     const I64_MIN_AS_F64: f64 = -9_223_372_036_854_775_808.0;
     const I64_MAX_AS_F64: f64 = 9_223_372_036_854_775_807.0;
 
     if !value.is_finite() || value.fract() != 0.0 {
-        return Err(VmFault::InvalidIntegerOperand(value));
+        return Err(Ic10Fault::InvalidIntegerOperand(value));
     }
     if !(I64_MIN_AS_F64..=I64_MAX_AS_F64).contains(&value) {
-        return Err(VmFault::InvalidIntegerOperand(value));
+        return Err(Ic10Fault::InvalidIntegerOperand(value));
     }
     #[allow(clippy::cast_possible_truncation)]
     Ok(value as i64)
 }
 
 #[allow(clippy::cast_precision_loss, clippy::missing_const_for_fn)]
-fn i64_to_f64(value: i64) -> Result<f64, VmFault> {
+fn i64_to_f64(value: i64) -> Result<f64, Ic10Fault> {
     const MAX_EXACT_INTEGER: u64 = 9_007_199_254_740_992;
     if value.unsigned_abs() > MAX_EXACT_INTEGER {
-        return Err(VmFault::IntegerNotExactlyRepresentable(value));
+        return Err(Ic10Fault::IntegerNotExactlyRepresentable(value));
     }
     Ok(value as f64)
 }
 
 #[allow(clippy::cast_precision_loss, clippy::missing_const_for_fn)]
-fn u64_to_f64(value: u64) -> Result<f64, VmFault> {
+fn u64_to_f64(value: u64) -> Result<f64, Ic10Fault> {
     const MAX_EXACT_INTEGER: u64 = 9_007_199_254_740_992;
     if value > MAX_EXACT_INTEGER {
-        return Err(VmFault::UnsignedIntegerNotExactlyRepresentable(value));
+        return Err(Ic10Fault::UnsignedIntegerNotExactlyRepresentable(value));
     }
     Ok(value as f64)
 }

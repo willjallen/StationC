@@ -14,13 +14,13 @@ move r0 99
 ")?;
 
     assert_tick(output.tick, 2, StopReason::Yield)?;
-    assert_pc(&output.vm, 2)?;
-    assert_register(&output.vm, 0, 1.0)
+    assert_pc(&output.ic10, 2)?;
+    assert_register(&output.ic10, 0, 1.0)
 }
 
 #[test]
 fn second_tick_continues_after_yield() -> TestResult {
-    let (vm, results) = run_ticks(
+    let (ic10, results) = run_ticks(
         "\
 move r0 1
 yield
@@ -33,13 +33,13 @@ yield
 
     assert_tick(tick(&results, 0)?, 2, StopReason::Yield)?;
     assert_tick(tick(&results, 1)?, 2, StopReason::Yield)?;
-    assert_pc(&vm, 4)?;
-    assert_register(&vm, 0, 2.0)
+    assert_pc(&ic10, 4)?;
+    assert_register(&ic10, 0, 2.0)
 }
 
 #[test]
 fn program_end_reports_halt() -> TestResult {
-    let (vm, results) = run_ticks(
+    let (ic10, results) = run_ticks(
         "\
 move r0 1
 ",
@@ -48,8 +48,8 @@ move r0 1
     )?;
 
     assert_tick(tick(&results, 0)?, 1, StopReason::Halt)?;
-    assert_pc(&vm, 1)?;
-    assert_register(&vm, 0, 1.0)
+    assert_pc(&ic10, 1)?;
+    assert_register(&ic10, 0, 1.0)
 }
 
 #[test]
@@ -106,7 +106,7 @@ move rr0 99
 yield
 ")?;
 
-    assert_register(&output.vm, 3, 99.0)
+    assert_register(&output.ic10, 3, 99.0)
 }
 
 #[test]
@@ -118,7 +118,7 @@ move r1 rr0
 yield
 ")?;
 
-    assert_register(&output.vm, 1, 88.0)
+    assert_register(&output.ic10, 1, 88.0)
 }
 
 #[test]
@@ -130,7 +130,7 @@ move rrr1 4
 yield
 ")?;
 
-    assert_register(&output.vm, 3, 4.0)
+    assert_register(&output.ic10, 3, 4.0)
 }
 
 #[test]
@@ -158,8 +158,8 @@ move r0 7
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 7.0)?;
-    assert_pc(&output.vm, 5)
+    assert_register(&output.ic10, 0, 7.0)?;
+    assert_pc(&output.ic10, 5)
 }
 
 #[test]
@@ -201,6 +201,6 @@ rand r0
 yield
 ")?;
 
-    assert_register(&first.vm, 0, 0.996_522_255_776_848_2)?;
-    assert_register(&second.vm, 0, 0.996_522_255_776_848_2)
+    assert_register(&first.ic10, 0, 0.996_522_255_776_848_2)?;
+    assert_register(&second.ic10, 0, 0.996_522_255_776_848_2)
 }

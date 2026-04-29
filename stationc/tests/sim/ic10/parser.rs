@@ -15,7 +15,7 @@ add r0 r0 2
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 3.0)
+    assert_register(&output.ic10, 0, 3.0)
 }
 
 #[test]
@@ -28,7 +28,7 @@ done:
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 4.0)
+    assert_register(&output.ic10, 0, 4.0)
 }
 
 #[test]
@@ -42,11 +42,11 @@ snan r4 nan
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 16.0)?;
-    assert_register(&output.vm, 1, 10.0)?;
-    assert_register(&output.vm, 2, f64::INFINITY)?;
-    assert_register(&output.vm, 3, f64::NEG_INFINITY)?;
-    assert_register(&output.vm, 4, 1.0)
+    assert_register(&output.ic10, 0, 16.0)?;
+    assert_register(&output.ic10, 1, 10.0)?;
+    assert_register(&output.ic10, 2, f64::INFINITY)?;
+    assert_register(&output.ic10, 3, f64::NEG_INFINITY)?;
+    assert_register(&output.ic10, 4, 1.0)
 }
 
 #[test]
@@ -59,7 +59,7 @@ done:
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 3.0)
+    assert_register(&output.ic10, 0, 3.0)
 }
 
 #[test]

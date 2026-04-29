@@ -9,7 +9,7 @@ not r0 0
 yield
 ")?;
 
-    assert_register(&output.vm, 0, -1.0)
+    assert_register(&output.ic10, 0, -1.0)
 }
 
 #[test]
@@ -19,7 +19,7 @@ not r0 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, -2.0)
+    assert_register(&output.ic10, 0, -2.0)
 }
 
 #[test]
@@ -31,9 +31,9 @@ and r2 r0 r1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 15.0)?;
-    assert_register(&output.vm, 1, 165.0)?;
-    assert_register(&output.vm, 2, 5.0)
+    assert_register(&output.ic10, 0, 15.0)?;
+    assert_register(&output.ic10, 1, 165.0)?;
+    assert_register(&output.ic10, 2, 5.0)
 }
 
 #[test]
@@ -46,10 +46,10 @@ nor r3 0 0
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 2.0)?;
-    assert_register(&output.vm, 1, 5.0)?;
-    assert_register(&output.vm, 2, 4.0)?;
-    assert_register(&output.vm, 3, -1.0)
+    assert_register(&output.ic10, 0, 2.0)?;
+    assert_register(&output.ic10, 1, 5.0)?;
+    assert_register(&output.ic10, 2, 4.0)?;
+    assert_register(&output.ic10, 3, -1.0)
 }
 
 #[test]
@@ -60,8 +60,8 @@ sll r1 3 2
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 12.0)?;
-    assert_register(&output.vm, 1, 12.0)
+    assert_register(&output.ic10, 0, 12.0)?;
+    assert_register(&output.ic10, 1, 12.0)
 }
 
 #[test]
@@ -72,8 +72,8 @@ srl r1 8 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, -4.0)?;
-    assert_register(&output.vm, 1, 4.0)
+    assert_register(&output.ic10, 0, -4.0)?;
+    assert_register(&output.ic10, 1, 4.0)
 }
 
 #[test]

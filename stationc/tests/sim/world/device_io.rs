@@ -1,5 +1,5 @@
 use stationc::sim::{
-    ic10::{DevicePort, Error as Ic10Error, ErrorCode, ReferenceId, StopReason, Vm},
+    ic10::{DevicePort, Error as Ic10Error, ErrorCode, Ic10, ReferenceId, StopReason},
     world::{Device, World, WorldError},
 };
 
@@ -110,14 +110,14 @@ yield
 
 #[test]
 fn standalone_ic10_requires_world_context_for_device_io() -> TestResult {
-    let mut vm = Vm::from_source(
+    let mut ic10 = Ic10::from_source(
         "\
 l r0 d0 Temperature
 yield
 ",
     )?;
 
-    let error = vm_tick_error(&mut vm)?;
+    let error = ic10_tick_error(&mut ic10)?;
 
     assert_eq!(error.code(), ErrorCode::WorldContextRequired);
     Ok(())
@@ -196,8 +196,8 @@ fn tick_error(world: &mut World) -> TestResult<WorldError> {
     }
 }
 
-fn vm_tick_error(vm: &mut Vm) -> TestResult<Ic10Error> {
-    match vm.run_until_yield_or_budget(128) {
+fn ic10_tick_error(ic10: &mut Ic10) -> TestResult<Ic10Error> {
+    match ic10.run_until_yield_or_budget(128) {
         Ok(result) => Err(format!("expected IC10 tick error, got {result:?}").into()),
         Err(error) => Ok(error),
     }

@@ -148,7 +148,7 @@ impl World {
                     ic_housings: &mut self.ic_housings,
                 };
                 housing
-                    .vm
+                    .ic10
                     .run_until_yield_or_budget_with_environment(budget, &mut environment)
             };
             self.ic_housings.insert(index, housing);

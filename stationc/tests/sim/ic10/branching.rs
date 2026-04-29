@@ -14,7 +14,7 @@ blt r0 3 start
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 3.0)?;
+    assert_register(&output.ic10, 0, 3.0)?;
     assert_tick(output.tick, 8, StopReason::Yield)
 }
 
@@ -28,8 +28,8 @@ done:
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_pc(&output.vm, 4)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_pc(&output.ic10, 4)
 }
 
 #[test]
@@ -43,9 +43,9 @@ move r1 ra
 j ra
 ")?;
 
-    assert_register(&output.vm, 0, 7.0)?;
-    assert_register(&output.vm, 1, 1.0)?;
-    assert_ra(&output.vm, 1.0)
+    assert_register(&output.ic10, 0, 7.0)?;
+    assert_register(&output.ic10, 1, 1.0)?;
+    assert_ra(&output.ic10, 1.0)
 }
 
 #[test]
@@ -64,10 +64,10 @@ move r1 11
 j ra
 ")?;
 
-    assert_register(&output.vm, 0, 7.0)?;
-    assert_register(&output.vm, 1, 11.0)?;
-    assert_ra(&output.vm, 1.0)?;
-    assert_sp(&output.vm, 0.0)
+    assert_register(&output.ic10, 0, 7.0)?;
+    assert_register(&output.ic10, 1, 11.0)?;
+    assert_ra(&output.ic10, 1.0)?;
+    assert_sp(&output.ic10, 0.0)
 }
 
 #[test]
@@ -85,7 +85,7 @@ add r0 r0 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 2.0)
+    assert_register(&output.ic10, 0, 2.0)
 }
 
 #[test]
@@ -111,7 +111,7 @@ add r0 r0 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 4.0)
+    assert_register(&output.ic10, 0, 4.0)
 }
 
 #[test]
@@ -145,7 +145,7 @@ add r0 r0 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 6.0)
+    assert_register(&output.ic10, 0, 6.0)
 }
 
 #[test]
@@ -157,7 +157,7 @@ brlt r0 3 -1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 3.0)
+    assert_register(&output.ic10, 0, 3.0)
 }
 
 #[test]
@@ -182,7 +182,7 @@ move r0 99
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 5.0)
+    assert_register(&output.ic10, 0, 5.0)
 }
 
 #[test]
@@ -214,7 +214,7 @@ add r1 r1 1
 yield
 ")?;
 
-    assert_register(&output.vm, 1, 6.0)
+    assert_register(&output.ic10, 1, 6.0)
 }
 
 #[test]
@@ -227,8 +227,8 @@ move r1 7
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_register(&output.vm, 1, 7.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_register(&output.ic10, 1, 7.0)
 }
 
 #[test]
@@ -241,8 +241,8 @@ move r0 ra
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_ra(&output.vm, 1.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_ra(&output.ic10, 1.0)
 }
 
 #[test]
@@ -255,8 +255,8 @@ move r0 ra
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_ra(&output.vm, 1.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_ra(&output.ic10, 1.0)
 }
 
 #[test]
@@ -269,8 +269,8 @@ move r0 ra
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_ra(&output.vm, 1.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_ra(&output.ic10, 1.0)
 }
 
 #[test]
@@ -284,7 +284,7 @@ move r0 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)
+    assert_register(&output.ic10, 0, 1.0)
 }
 
 #[test]
@@ -310,7 +310,7 @@ add r0 r0 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 4.0)
+    assert_register(&output.ic10, 0, 4.0)
 }
 
 #[test]
@@ -332,7 +332,7 @@ add r0 r0 1
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 4.0)
+    assert_register(&output.ic10, 0, 4.0)
 }
 
 #[test]
@@ -345,8 +345,8 @@ move r0 ra
 yield
 ")?;
 
-    assert_register(&output.vm, 0, 1.0)?;
-    assert_ra(&output.vm, 1.0)
+    assert_register(&output.ic10, 0, 1.0)?;
+    assert_ra(&output.ic10, 1.0)
 }
 
 #[test]
@@ -362,5 +362,5 @@ j loop
     )?;
 
     assert_tick(output.tick, 5, StopReason::Budget)?;
-    assert_register(&output.vm, 0, 2.0)
+    assert_register(&output.ic10, 0, 2.0)
 }
