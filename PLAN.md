@@ -1255,125 +1255,134 @@ stationc/
         testing_strategy.md
         known_limitations.md
 
-    crates/
-        stationc/
-            Cargo.toml
-            src/
-                lib.rs
+    src/
+        lib.rs
+        main.rs
 
-                frontend/
-                    lexer.rs
-                    parser.rs
-                    tokens.rs
-                    ast.rs
-                    diagnostics.rs
-                    source_map.rs
+        cli/
+            mod.rs
+            commands.rs
 
-                sema/
-                    symbols.rs
-                    types.rs
-                    type_checker.rs
-                    builtin_registry.rs
-                    stationeers_defs.rs
-                    validation.rs
+        compiler/
+            mod.rs
 
-                ir/
-                    mod.rs
-                    cfg.rs
-                    builder.rs
-                    pretty.rs
-                    verifier.rs
-
-                analysis/
-                    dependency_graph.rs
-                    escape_analysis.rs
-                    effect_analysis.rs
-                    kernel_partitioning.rs
-                    liveness.rs
-
-                lower/
-                    host.rs
-                    kernel.rs
-                    calls.rs
-                    memory.rs
-                    devices.rs
-                    futures.rs
-
-                bytecode/
-                    opcodes.rs
-                    instruction.rs
-                    encoder.rs
-                    decoder.rs
-                    disassembler.rs
-                    verifier.rs
-                    layout.rs
-
-                runtime_model/
-                    abi.rs
-                    memory_map.rs
-                    jobs.rs
-                    devices.rs
-                    groups.rs
-                    manifest.rs
-
-                emit/
-                    ic10_writer.rs
-                    firmware_templates.rs
-                    rom_loader.rs
-                    host_firmware.rs
-                    worker_firmware.rs
-                    bootstrap_firmware.rs
-                    manifest_writer.rs
-                    debug_map_writer.rs
-
-                support/
-                    hash.rs
-                    stationpedia_data.rs
-                    constants.rs
-
-            tests/
+            frontend/
+                mod.rs
                 lexer.rs
                 parser.rs
+                tokens.rs
+                ast.rs
+                diagnostics.rs
+                source_map.rs
+
+            sema/
+                mod.rs
+                symbols.rs
+                types.rs
                 type_checker.rs
-                bytecode_encoder.rs
-                disassembler.rs
-                hash.rs
+                builtin_registry.rs
+                stationeers_defs.rs
+                validation.rs
 
-        stationc-cli/
-            Cargo.toml
-            src/
-                main.rs
-                commands.rs
+            ir/
+                mod.rs
+                cfg.rs
+                builder.rs
+                pretty.rs
+                verifier.rs
 
-        stationc-sim/
-            Cargo.toml
-            src/
-                lib.rs
-                vm.rs
+            analysis/
+                mod.rs
+                dependency_graph.rs
+                escape_analysis.rs
+                effect_analysis.rs
+                kernel_partitioning.rs
+                liveness.rs
+
+            lower/
+                mod.rs
+                host.rs
+                kernel.rs
+                calls.rs
                 memory.rs
                 devices.rs
+                futures.rs
+
+            bytecode/
+                mod.rs
+                opcodes.rs
+                instruction.rs
+                encoder.rs
+                decoder.rs
+                disassembler.rs
+                verifier.rs
+                layout.rs
+
+            runtime_model/
+                mod.rs
+                abi.rs
+                memory_map.rs
+                jobs.rs
+                devices.rs
+                groups.rs
+                manifest.rs
+
+            emit/
+                mod.rs
+                ic10_writer.rs
+                firmware_templates.rs
+                rom_loader.rs
+                host_firmware.rs
+                worker_firmware.rs
+                bootstrap_firmware.rs
+                manifest_writer.rs
+                debug_map_writer.rs
+
+            support/
+                mod.rs
+                hash.rs
+                stationpedia_data.rs
+                constants.rs
+
+        sim/
+            mod.rs
+
+            ic10/
+                mod.rs
+                instruction.rs
+                parser.rs
+                program.rs
+                registers.rs
+                stack.rs
+                vm.rs
+                trace.rs
+
+            world/
+                mod.rs
+                data_network.rs
+                device.rs
+                device_logic.rs
+                ic_housing.rs
+                prefab.rs
+                scenario.rs
+                tick.rs
+                world.rs
+
+            stationos/
+                mod.rs
+                bytecode_vm.rs
+                memory.rs
                 scheduler.rs
                 worker.rs
                 host.rs
-                ic10_budget.rs
                 trace.rs
 
-            tests/
-                vm_arithmetic.rs
-                kernel_launch.rs
-                await_sum.rs
-                device_discovery.rs
-                command_buffer.rs
-                scheduler_scaling.rs
-
-        stationc-tools/
-            Cargo.toml
-            src/
-                bin/
-                    format_manifest.rs
-                    dump_rom.rs
-                    split_loader_pages.rs
-                    stationpedia_import.rs
+        tools/
+            mod.rs
+            format_manifest.rs
+            dump_rom.rs
+            split_loader_pages.rs
+            stationpedia_import.rs
 
     firmware/
         worker.vm.ic10.tera
@@ -1383,20 +1392,65 @@ stationc/
         ram_bank_idle.ic10.tera
 
     tests/
-        golden/
-            sources/
-                simple_arithmetic.sc10
-                simple_kernel.sc10
-                battery_average.sc10
-            expected/
-                simple_arithmetic.disasm
-                simple_kernel.manifest.json
+        compiler_lexer.rs
+        compiler_parser.rs
+        compiler_type_checker.rs
+        compiler_bytecode_encoder.rs
+        compiler_disassembler.rs
+        compiler_hash.rs
+
+        sim_ic10_arithmetic.rs
+        sim_ic10_branching.rs
+        sim_ic10_stack.rs
+        sim_world_tick_budget.rs
+        sim_world_multi_chip.rs
+        sim_world_device_io.rs
+        sim_stationos_kernel_launch.rs
+        sim_stationos_await_sum.rs
+        sim_stationos_command_buffer.rs
+        sim_stationos_scheduler_scaling.rs
+
+        fixtures/
+            golden/
+                sources/
+                    simple_arithmetic.sc10
+                    simple_kernel.sc10
+                    battery_average.sc10
+                expected/
+                    simple_arithmetic.disasm
+                    simple_kernel.manifest.json
 
     out/
         .gitkeep
 ```
 
-The repository should be Rust-first for the compiler, simulator, CLI, and support tooling. All off-game implementation code should be written in Rust and organized as a Cargo workspace. Python should not be part of the planned implementation. The generated and handwritten in-game firmware remains IC10.
+The repository should be Rust-first for the compiler, simulator, CLI, and support tooling. All off-game implementation code should be written in Rust in one Cargo package with one user-facing `stationc` binary. Python should not be part of the planned implementation. The generated and handwritten in-game firmware remains IC10.
+
+Use Rust's standard package shape:
+
+```text
+src/lib.rs   shared library root for compiler, simulators, and tools
+src/main.rs  small binary entry point for the `stationc` CLI
+```
+
+Use one module-folder convention consistently under `src/`:
+
+```text
+folder/mod.rs      root of that module folder
+folder/thing.rs    child module declared by folder/mod.rs
+```
+
+Every Rust module directory in the tree above has a `mod.rs`. Leaf modules are plain `.rs` files. Cargo discovers integration tests from top-level `.rs` files directly under `tests/`; nested directories under `tests/` are for fixtures and support data, not standalone test crates.
+
+The code should be segmented by responsibility with top-level modules. The compiler toolchain lives under `compiler/`. The simulator stack lives under `sim/`, with clear layers:
+
+```text
+sim::stationos
+    uses sim::world
+        uses sim::ic10
+```
+
+The IC10 simulator and world simulator must also be runnable independently through `stationc` subcommands.
 
 ---
 
@@ -1407,7 +1461,9 @@ The CLI should support:
 ```bash
 stationc build examples/battery_average.sc10 --out out/battery_average
 stationc disasm out/battery_average/program.rom.json
-stationc simulate examples/battery_average.sc10 --workers 8 --ticks 100
+stationc sim ic10 firmware/worker_firmware.ic10 --ticks 10 --trace
+stationc sim world examples/worlds/basic.world.toml --ticks 100 --trace
+stationc sim stationos examples/battery_average.sc10 --workers 8 --ticks 100
 stationc emit-loaders examples/battery_average.sc10 --out out/battery_average
 stationc verify out/battery_average/manifest.json
 ```
@@ -1611,9 +1667,71 @@ This verifier is essential because debugging inside Stationeers is painful.
 
 ## 29. Simulator
 
-Build a simulator before relying on in-game testing.
+Build simulator layers before relying on in-game testing.
 
-The simulator should model:
+There are three simulator layers.
+
+### 29.1 Standalone IC10 simulator
+
+The IC10 simulator executes one IC10 program in isolation. It is the lowest simulator layer and should be useful on its own for testing handwritten firmware.
+
+It should model:
+
+```text
+IC10 source parsing
+labels and program counters
+registers
+numeric constants
+basic arithmetic
+branches and jumps
+yield behavior
+stack operations
+simple device port abstractions
+instruction counting
+faults and traces
+```
+
+The IC10 simulator should expose an API that can execute one instruction at a time, run until `yield`, or run until an instruction budget is exhausted. When driven by the world simulator, the normal per-tick budget is 128 IC10 instructions.
+
+Standalone command:
+
+```bash
+stationc sim ic10 firmware/worker_firmware.ic10 --ticks 10 --trace
+```
+
+### 29.2 World simulator
+
+The world simulator executes a small, deterministic subset of Stationeers. It composes multiple IC10 chips and external devices into a ticked simulation.
+
+It should model:
+
+```text
+world ticks
+multiple IC10 housings
+IC housing pins d0 through d5 and db
+per-chip stack memory
+device stack memory
+data networks
+ReferenceId addressing
+PrefabHash and NameHash classification
+logic fields
+device reads and writes
+simple external device behavior
+```
+
+The world tick loop should run each active IC10 chip for up to 128 instructions or until it yields, then advance the subset of device logic needed by the scenario. The first world simulator does not need to perfectly emulate Stationeers. It needs to be deterministic, inspectable, and accurate enough to test firmware assumptions about timing, stacks, devices, and multi-chip communication.
+
+Standalone command:
+
+```bash
+stationc sim world examples/worlds/basic.world.toml --ticks 100 --trace
+```
+
+### 29.3 StationOS simulator
+
+The StationOS simulator is the highest simulator layer. It validates the compiler output and distributed runtime behavior using the world and IC10 simulator layers below it.
+
+It should model:
 
 ```text
 ROM banks
@@ -1628,9 +1746,7 @@ instruction budget per tick
 yield behavior
 ```
 
-It does not need to perfectly emulate all of Stationeers. It needs to validate the project’s own VM, scheduler, memory model, and compiler output.
-
-Simulator features:
+StationOS simulator features:
 
 ```text
 run bytecode without IC10
@@ -1643,10 +1759,10 @@ estimate IC10 instruction budget
 detect races in shared writes
 ```
 
-Example simulator command:
+StationOS command:
 
 ```bash
-stationc simulate examples/battery_average.sc10 --workers 16 --ticks 100 --trace
+stationc sim stationos examples/battery_average.sc10 --workers 16 --ticks 100 --trace
 ```
 
 Output:
@@ -1948,14 +2064,62 @@ manual IC10 test: ReferenceId network scan works
 
 Do this before building the compiler.
 
-### Phase 1: Minimal bytecode VM in Rust
+### Phase 1: Standalone IC10 simulator
+
+Implement:
+
+```text
+IC10 source parser
+labels and program counters
+register file
+basic arithmetic
+branches and jumps
+yield
+stack operations
+instruction tracing
+```
+
+Goal: run a tiny IC10 program:
+
+```text
+move r0 1
+move r1 2
+add r2 r0 r1
+yield
+```
+
+Run it with:
+
+```bash
+stationc sim ic10 examples/ic10/add.ic10 --trace
+```
+
+### Phase 2: Minimal world simulator
+
+Implement:
+
+```text
+world tick loop
+multiple IC10 housings
+IC housing pins d0 through d5 and db
+per-chip stacks
+device stacks
+simple data network
+ReferenceId lookup
+basic logic fields
+128 instructions per IC per world tick
+```
+
+Goal: simulate two IC10 chips and one simple device communicating through stack and logic IO across world ticks.
+
+### Phase 3: Minimal StationOS bytecode VM in Rust
 
 Implement:
 
 ```text
 bytecode opcodes
 encoder/decoder
-Rust VM
+StationOS VM
 ROM/RAM model
 simple arithmetic kernels
 ```
@@ -1966,9 +2130,9 @@ Goal: compile or manually define bytecode for:
 return arg0 + arg1 * arg2
 ```
 
-Run it in the Rust simulator.
+Run it in the StationOS simulator.
 
-### Phase 2: Worker IC10 VM MVP
+### Phase 4: Worker IC10 VM MVP
 
 Implement fixed IC10 worker firmware supporting:
 
@@ -1986,7 +2150,7 @@ FAULT
 
 Manually load ROM bytecode into a ROM chip. Have one worker execute it and write a result.
 
-### Phase 3: Host scheduler MVP
+### Phase 5: Host scheduler MVP
 
 Implement host firmware that can:
 
@@ -2000,11 +2164,11 @@ display result in Setting
 
 No compiler yet.
 
-### Phase 4: Bootstrap MVP
+### Phase 6: Bootstrap MVP
 
 Implement bootstrap that scans network, finds workers by magic, assigns worker IDs, and writes worker table.
 
-### Phase 5: Minimal StationC compiler
+### Phase 7: Minimal StationC compiler
 
 Implement parser/type checker/codegen for:
 
@@ -2018,7 +2182,7 @@ await
 
 No devices yet.
 
-### Phase 6: Device intrinsics
+### Phase 8: Device intrinsics
 
 Add:
 
@@ -2034,7 +2198,7 @@ batch_write
 
 Simulator should support mock devices.
 
-### Phase 7: ROM/RAM scaling
+### Phase 9: ROM/RAM scaling
 
 Add:
 
@@ -2045,7 +2209,7 @@ global logical addresses
 manifest-driven loader generation
 ```
 
-### Phase 8: Futures, reductions, command buffers
+### Phase 10: Futures, reductions, command buffers
 
 Add:
 
@@ -2059,7 +2223,7 @@ CommandBuffer
 command_buffer_apply
 ```
 
-### Phase 9: Optimization
+### Phase 11: Optimization
 
 Add:
 
@@ -2073,7 +2237,7 @@ kernel chunk-size tuning
 scheduler utilization metrics
 ```
 
-### Phase 10: Real examples
+### Phase 12: Real examples
 
 Implement examples:
 
@@ -2242,7 +2406,8 @@ Runtime:
     many workers
     fixed worker mailbox
     host job dispatch
-    Rust simulator
+    StationOS simulator
+    minimal world simulator
 
 No devices yet.
 ```
