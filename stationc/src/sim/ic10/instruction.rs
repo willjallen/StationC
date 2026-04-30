@@ -99,6 +99,11 @@ pub(super) enum Instruction {
         field: LogicFieldOperand,
         value: ValueOperand,
     },
+    DeviceSet {
+        destination: RegisterRef,
+        device: DeviceOperand,
+        expected_set: bool,
+    },
     GetStack {
         destination: RegisterRef,
         device: DeviceOperand,
@@ -239,6 +244,22 @@ pub(super) enum BranchCondition {
     Nan {
         value: ValueOperand,
     },
+    DeviceSet {
+        device: DeviceOperand,
+        expected_set: bool,
+    },
+    DeviceValid {
+        operation: DeviceLogicOperation,
+        device: DeviceOperand,
+        field: LogicFieldOperand,
+        expected_valid: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum DeviceLogicOperation {
+    Load,
+    Store,
 }
 
 #[derive(Debug, Clone, Copy)]

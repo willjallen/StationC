@@ -42,6 +42,7 @@ pub enum WorldAccessOperation {
 
 /// Target of a world-facing IC10 operation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(clippy::enum_variant_names)]
 pub enum WorldAccessTarget {
     /// A device logic field such as `Temperature` or `On`.
     DeviceLogic {

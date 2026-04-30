@@ -100,7 +100,7 @@ yield
 ")?;
 
     assert_register(&output.ic10, 0, f64::from(0xDEAD_BEEF_u32))?;
-    assert_register(&output.ic10, 2, 0xF0 as f64)
+    assert_register(&output.ic10, 2, f64::from(0xF0))
 }
 
 #[test]

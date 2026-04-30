@@ -319,6 +319,131 @@ yield
 }
 
 #[test]
+fn device_set_predicates_report_ports_references_and_unbound_pins() -> TestResult {
+    let mut world = World::new();
+    let sensor = world.add_device(Device::new().with_logic("Temperature", 300.0));
+    let housing = world.add_ic10_housing(&format!(
+        "\
+move r0 {}
+sdse r1 d0
+sdns r2 d0
+sdse r3 d1
+sdns r4 d1
+sdse r5 r0
+sdns r6 999
+yield
+",
+        sensor.value()
+    ))?;
+    world.connect_pin(housing, DevicePort::D0, sensor)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 8, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 1, 1.0)?;
+    assert_housing_register(&world, housing, 2, 0.0)?;
+    assert_housing_register(&world, housing, 3, 0.0)?;
+    assert_housing_register(&world, housing, 4, 1.0)?;
+    assert_housing_register(&world, housing, 5, 1.0)?;
+    assert_housing_register(&world, housing, 6, 1.0)
+}
+
+#[test]
+fn device_set_branches_support_absolute_relative_and_link_forms() -> TestResult {
+    let mut world = World::new();
+    let sensor = world.add_device(Device::new().with_logic("Temperature", 300.0));
+    let housing = world.add_ic10_housing(
+        "\
+bdns d0 missing
+move r0 1
+bdse d0 set
+move r0 99
+set:
+bdns d1 unset
+move r1 99
+unset:
+brdse d0 2
+move r2 99
+move r2 2
+bdseal d0 linked
+move r3 99
+linked:
+move r3 ra
+yield
+missing:
+hcf
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, sensor)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 9, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, 1.0)?;
+    assert_housing_register(&world, housing, 1, 0.0)?;
+    assert_housing_register(&world, housing, 2, 2.0)?;
+    assert_housing_register(&world, housing, 3, 10.0)
+}
+
+#[test]
+fn device_validity_branches_check_load_and_store_capability_without_faulting() -> TestResult {
+    let mut world = World::new();
+    let sensor = world.add_device(Device::new().with_logic("Temperature", 300.0));
+    let housing = world.add_ic10_housing(
+        "\
+bdnvl d0 Temperature bad
+bdnvs d0 Temperature bad
+move r0 1
+bdnvs d0 ReferenceId readonly
+move r0 99
+readonly:
+move r1 2
+bdnvl d0 Missing missing_load
+move r1 99
+missing_load:
+bdnvl d1 Temperature missing_device
+move r2 99
+missing_device:
+yield
+bad:
+hcf
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, sensor)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 8, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, 1.0)?;
+    assert_housing_register(&world, housing, 1, 2.0)?;
+    assert_housing_register(&world, housing, 2, 0.0)
+}
+
+#[test]
+fn device_validity_branches_accept_reference_id_targets() -> TestResult {
+    let mut world = World::new();
+    let sensor = world.add_device(Device::new().with_logic("Temperature", 300.0));
+    let housing = world.add_ic10_housing(&format!(
+        "\
+move r0 {}
+bdnvl r0 Temperature bad
+bdnvs 999 Temperature missing
+move r1 99
+missing:
+yield
+bad:
+hcf
+",
+        sensor.value()
+    ))?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 4, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 1, 0.0)
+}
+
+#[test]
 fn get_device_stack_out_of_range_is_typed_runtime_error() -> TestResult {
     let mut world = World::new();
     let device = world.add_device(Device::new().with_logic("On", 0.0));

@@ -6,9 +6,9 @@ use super::{
     environment::{BatchMode, DevicePort},
     instruction::{
         ApproxOperation, ApproxZeroOperation, BatchModeOperand, BinaryOperation, BranchCondition,
-        CompareOperation, CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction,
-        JumpTarget, LogicFieldOperand, ProgramInstruction, TernaryOperation, UnaryOperation,
-        ValueOperand,
+        CompareOperation, CompareZeroOperation, DeviceLogicOperation, DeviceOperand,
+        DevicePortOperand, Instruction, JumpTarget, LogicFieldOperand, ProgramInstruction,
+        TernaryOperation, UnaryOperation, ValueOperand,
     },
     logic_types,
     program::Program,
@@ -277,6 +277,7 @@ fn parse_instruction(
         "move" | "rand" | "select" => parse_register_instruction(tokens, context),
         "push" | "pop" | "peek" | "poke" => parse_local_stack_instruction(tokens, context),
         "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
+        "sdns" | "sdse" => parse_device_predicate_instruction(tokens, context),
         "lb" | "lbn" | "sb" | "sbn" => parse_batch_logic_instruction(tokens, context),
         "clr" | "clrd" | "get" | "put" | "getd" | "putd" => {
             parse_device_stack_instruction(tokens, context)
@@ -432,6 +433,23 @@ fn parse_store_logic_instruction(
         device,
         field: parse_logic_field(tokens[2], context),
         value: parse_value(tokens[3], context),
+    })
+}
+
+fn parse_device_predicate_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 3, context.line_number)?;
+    let expected_set = match tokens[0] {
+        "sdse" => true,
+        "sdns" => false,
+        mnemonic => return unsupported_instruction(mnemonic, context.line_number),
+    };
+    Ok(Instruction::DeviceSet {
+        destination: parse_register(tokens[1], context)?,
+        device: parse_device_operand(tokens[2], context),
+        expected_set,
     })
 }
 
@@ -661,6 +679,10 @@ fn parse_branch_instruction(
     tokens: &[&str],
     context: ParseContext<'_>,
 ) -> Result<Option<Instruction>, ParseError> {
+    if let Some(instruction) = parse_device_branch_instruction(mnemonic, tokens, context)? {
+        return Ok(Some(instruction));
+    }
+
     let Some((base, flags)) = branch_family(mnemonic) else {
         return Ok(None);
     };
@@ -675,6 +697,42 @@ fn parse_branch_instruction(
         link: flags.link,
         relative: flags.relative,
     }))
+}
+
+fn parse_device_branch_instruction(
+    mnemonic: &str,
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Option<Instruction>, ParseError> {
+    if let Some((expected_set, flags)) = device_set_branch(mnemonic) {
+        require_len(tokens, 3, context.line_number)?;
+        return Ok(Some(Instruction::Branch {
+            condition: BranchCondition::DeviceSet {
+                device: parse_device_operand(tokens[1], context),
+                expected_set,
+            },
+            target: parse_jump_target(tokens[2], context),
+            link: flags.link,
+            relative: flags.relative,
+        }));
+    }
+
+    if let Some(operation) = device_valid_branch(mnemonic) {
+        require_len(tokens, 4, context.line_number)?;
+        return Ok(Some(Instruction::Branch {
+            condition: BranchCondition::DeviceValid {
+                operation,
+                device: parse_device_operand(tokens[1], context),
+                field: parse_logic_field(tokens[2], context),
+                expected_valid: false,
+            },
+            target: parse_jump_target(tokens[3], context),
+            link: false,
+            relative: false,
+        }));
+    }
+
+    Ok(None)
 }
 
 fn parse_branch_condition(
@@ -706,6 +764,62 @@ fn parse_branch_condition(
         BranchShape::Nan => BranchCondition::Nan {
             value: parse_value(tokens[1], context),
         },
+    }
+}
+
+fn device_set_branch(mnemonic: &str) -> Option<(bool, BranchFlags)> {
+    match mnemonic {
+        "bdns" => Some((
+            false,
+            BranchFlags {
+                link: false,
+                relative: false,
+            },
+        )),
+        "bdnsal" => Some((
+            false,
+            BranchFlags {
+                link: true,
+                relative: false,
+            },
+        )),
+        "brdns" => Some((
+            false,
+            BranchFlags {
+                link: false,
+                relative: true,
+            },
+        )),
+        "bdse" => Some((
+            true,
+            BranchFlags {
+                link: false,
+                relative: false,
+            },
+        )),
+        "bdseal" => Some((
+            true,
+            BranchFlags {
+                link: true,
+                relative: false,
+            },
+        )),
+        "brdse" => Some((
+            true,
+            BranchFlags {
+                link: false,
+                relative: true,
+            },
+        )),
+        _ => None,
+    }
+}
+
+fn device_valid_branch(mnemonic: &str) -> Option<DeviceLogicOperation> {
+    match mnemonic {
+        "bdnvl" => Some(DeviceLogicOperation::Load),
+        "bdnvs" => Some(DeviceLogicOperation::Store),
+        _ => None,
     }
 }
 

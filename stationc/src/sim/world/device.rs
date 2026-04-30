@@ -12,8 +12,40 @@ pub struct Device {
     reference_id: Option<ReferenceId>,
     prefab_hash: f64,
     name_hash: f64,
-    logic: HashMap<String, f64>,
+    logic: HashMap<String, LogicField>,
     stack: [f64; STACK_SIZE],
+}
+
+#[derive(Debug, Clone)]
+struct LogicField {
+    value: f64,
+    access: LogicAccess,
+}
+
+impl LogicField {
+    const fn writable(value: f64) -> Self {
+        Self {
+            value,
+            access: LogicAccess::Writable,
+        }
+    }
+
+    const fn read_only(value: f64) -> Self {
+        Self {
+            value,
+            access: LogicAccess::ReadOnly,
+        }
+    }
+
+    const fn is_writable(&self) -> bool {
+        matches!(self.access, LogicAccess::Writable)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogicAccess {
+    ReadOnly,
+    Writable,
 }
 
 impl Device {
@@ -33,6 +65,13 @@ impl Device {
     #[must_use]
     pub fn with_logic(mut self, field: impl Into<String>, value: f64) -> Self {
         self.set_logic(field, value);
+        self
+    }
+
+    /// Adds a read-only logic field and returns the device.
+    #[must_use]
+    pub fn with_read_only_logic(mut self, field: impl Into<String>, value: f64) -> Self {
+        self.set_read_only_logic(field, value);
         self
     }
 
@@ -56,15 +95,21 @@ impl Device {
         self.reference_id
     }
 
-    /// Reads a writable logic field stored on this device.
+    /// Reads a custom logic field stored on this device.
     #[must_use]
     pub fn logic(&self, field: &str) -> Option<f64> {
-        self.logic.get(field).copied()
+        self.logic.get(field).map(|logic| logic.value)
     }
 
     /// Sets or creates a writable logic field.
     pub fn set_logic(&mut self, field: impl Into<String>, value: f64) {
-        self.logic.insert(field.into(), value);
+        self.logic.insert(field.into(), LogicField::writable(value));
+    }
+
+    /// Sets or creates a read-only logic field.
+    pub fn set_read_only_logic(&mut self, field: impl Into<String>, value: f64) {
+        self.logic
+            .insert(field.into(), LogicField::read_only(value));
     }
 
     /// Reads a stack value by absolute address.
@@ -113,14 +158,13 @@ impl Device {
             }
             device_logic::PREFAB_HASH => Ok(self.prefab_hash),
             device_logic::NAME_HASH => Ok(self.name_hash),
-            _ => {
-                self.logic
-                    .get(field)
-                    .copied()
-                    .ok_or_else(|| EnvironmentFault::UnknownLogicField {
-                        field: field.to_owned(),
-                    })
-            }
+            _ => self
+                .logic
+                .get(field)
+                .map(|logic| logic.value)
+                .ok_or_else(|| EnvironmentFault::UnknownLogicField {
+                    field: field.to_owned(),
+                }),
         }
     }
 
@@ -136,8 +180,28 @@ impl Device {
                 .ok_or_else(|| EnvironmentFault::UnknownLogicField {
                     field: field.to_owned(),
                 })?;
-        *logic = value;
+        if !logic.is_writable() {
+            return Err(EnvironmentFault::ReadOnlyLogicField {
+                field: field.to_owned(),
+            });
+        }
+        logic.value = value;
         Ok(())
+    }
+
+    pub(super) fn can_load_logic(&self, field: &str) -> bool {
+        match field {
+            device_logic::REFERENCE_ID => self.reference_id.is_some(),
+            device_logic::PREFAB_HASH | device_logic::NAME_HASH => true,
+            _ => self.logic.contains_key(field),
+        }
+    }
+
+    pub(super) fn can_store_logic(&self, field: &str) -> bool {
+        if device_logic::is_read_only(field) {
+            return false;
+        }
+        self.logic.get(field).is_some_and(LogicField::is_writable)
     }
 
     pub(super) fn get_stack(&self, address: usize) -> Result<f64, EnvironmentFault> {
@@ -156,7 +220,7 @@ impl Device {
         Ok(())
     }
 
-    pub(super) fn clear_stack(&mut self) {
+    pub(super) const fn clear_stack(&mut self) {
         self.stack = [0.0; STACK_SIZE];
     }
 }

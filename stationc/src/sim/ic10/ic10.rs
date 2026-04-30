@@ -9,8 +9,9 @@ use super::{
     },
     instruction::{
         ApproxOperation, ApproxZeroOperation, BatchModeOperand, BinaryOperation, BranchCondition,
-        CompareOperation, CompareZeroOperation, DeviceOperand, DevicePortOperand, Instruction,
-        JumpTarget, LogicFieldOperand, TernaryOperation, UnaryOperation, ValueOperand,
+        CompareOperation, CompareZeroOperation, DeviceLogicOperation, DeviceOperand,
+        DevicePortOperand, Instruction, JumpTarget, LogicFieldOperand, TernaryOperation,
+        UnaryOperation, ValueOperand,
     },
     logic_types,
     program::Program,
@@ -171,7 +172,7 @@ impl Ic10 {
                 link,
                 relative,
             } => {
-                if self.branch_condition(&condition)? {
+                if self.branch_condition(environment, &condition)? {
                     self.jump(&target, link, relative, current_pc)?;
                 }
                 Ok(StepStop::Continue)
@@ -221,6 +222,11 @@ impl Ic10 {
                 field,
                 value,
             } => self.execute_store_logic(environment, &device, &field, &value),
+            Instruction::DeviceSet {
+                destination,
+                device,
+                expected_set,
+            } => self.execute_device_set(environment, destination, &device, expected_set),
             Instruction::GetStack {
                 destination,
                 device,
@@ -416,6 +422,19 @@ impl Ic10 {
         Ok(step_stop(environment))
     }
 
+    fn execute_device_set<E: Ic10Environment>(
+        &mut self,
+        environment: &mut E,
+        destination: RegisterRef,
+        device: &DeviceOperand,
+        expected_set: bool,
+    ) -> Result<StepStop, Ic10Fault> {
+        let target = self.device_target(device)?;
+        let is_set = environment.device_is_set(target);
+        self.write(destination, bool_to_number(is_set == expected_set))?;
+        Ok(StepStop::Continue)
+    }
+
     fn execute_get_stack<E: Ic10Environment>(
         &mut self,
         environment: &mut E,
@@ -570,7 +589,11 @@ impl Ic10 {
         Ok(result)
     }
 
-    fn branch_condition(&self, condition: &BranchCondition) -> Result<bool, Ic10Fault> {
+    fn branch_condition<E: Ic10Environment>(
+        &self,
+        environment: &mut E,
+        condition: &BranchCondition,
+    ) -> Result<bool, Ic10Fault> {
         match condition {
             BranchCondition::Compare {
                 operation,
@@ -608,6 +631,27 @@ impl Ic10 {
                 })
             }
             BranchCondition::Nan { value } => Ok(self.value(value)?.is_nan()),
+            BranchCondition::DeviceSet {
+                device,
+                expected_set,
+            } => {
+                let target = self.device_target(device)?;
+                Ok(environment.device_is_set(target) == *expected_set)
+            }
+            BranchCondition::DeviceValid {
+                operation,
+                device,
+                field,
+                expected_valid,
+            } => {
+                let target = self.device_target(device)?;
+                let field = self.logic_field(field)?;
+                let valid = match operation {
+                    DeviceLogicOperation::Load => environment.can_load_logic(target, field),
+                    DeviceLogicOperation::Store => environment.can_store_logic(target, field),
+                };
+                Ok(valid == *expected_valid)
+            }
         }
     }
 
@@ -869,14 +913,14 @@ fn bit_insert(base: f64, field: f64, offset: f64, length: f64) -> Result<f64, Ic
 fn bit_field_range(offset: f64, length: f64) -> Result<(u32, u32), Ic10Fault> {
     let offset = f64_to_i64(offset)?;
     let length = f64_to_i64(length)?;
-    if offset < 0 || length < 0 || length > 53 || offset >= 64 || offset + length > 64 {
+    if offset < 0 || !(0..=53).contains(&length) || offset >= 64 || offset + length > 64 {
         return Err(Ic10Fault::InvalidBitFieldRange { offset, length });
     }
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     Ok((offset as u32, length as u32))
 }
 
-fn bit_mask(length: u32) -> u64 {
+const fn bit_mask(length: u32) -> u64 {
     if length == 64 {
         u64::MAX
     } else {

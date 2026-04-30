@@ -272,6 +272,18 @@ pub trait Ic10Environment {
         value: f64,
     ) -> Result<(), EnvironmentFault>;
 
+    /// Returns whether a device target currently resolves to a world object.
+    #[must_use]
+    fn device_is_set(&mut self, target: DeviceTarget) -> bool;
+
+    /// Returns whether a logic field can be read from a device target.
+    #[must_use]
+    fn can_load_logic(&mut self, target: DeviceTarget, field: &str) -> bool;
+
+    /// Returns whether a logic field can be written on a device target.
+    #[must_use]
+    fn can_store_logic(&mut self, target: DeviceTarget, field: &str) -> bool;
+
     /// Clears stack memory on a device target.
     ///
     /// # Errors
@@ -349,6 +361,18 @@ impl Ic10Environment for NoEnvironment {
         Err(EnvironmentFault::WorldContextRequired {
             operation: EnvironmentOperation::StoreLogic,
         })
+    }
+
+    fn device_is_set(&mut self, _target: DeviceTarget) -> bool {
+        false
+    }
+
+    fn can_load_logic(&mut self, _target: DeviceTarget, _field: &str) -> bool {
+        false
+    }
+
+    fn can_store_logic(&mut self, _target: DeviceTarget, _field: &str) -> bool {
+        false
     }
 
     fn clear_stack(&mut self, _target: DeviceTarget) -> Result<(), EnvironmentFault> {

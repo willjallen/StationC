@@ -342,6 +342,20 @@ impl Ic10Environment for WorldIc10Context<'_> {
         Ok(())
     }
 
+    fn device_is_set(&mut self, target: DeviceTarget) -> bool {
+        self.resolved_device_for_target(target).is_some()
+    }
+
+    fn can_load_logic(&mut self, target: DeviceTarget, field: &str) -> bool {
+        self.resolved_device_for_target(target)
+            .is_some_and(|device| device.can_load_logic(field))
+    }
+
+    fn can_store_logic(&mut self, target: DeviceTarget, field: &str) -> bool {
+        self.resolved_device_for_target(target)
+            .is_some_and(|device| device.can_store_logic(field))
+    }
+
     fn clear_stack(&mut self, target: DeviceTarget) -> Result<(), EnvironmentFault> {
         let reference_id = self.reference_id_for_target(target)?;
         {
@@ -438,6 +452,42 @@ impl WorldIc10Context<'_> {
             return Ok(housing.device_mut());
         }
         Err(EnvironmentFault::UnknownReferenceId { reference_id })
+    }
+
+    fn resolved_device_for_target(&self, target: DeviceTarget) -> Option<&Device> {
+        let reference_id = self.reference_id_for_target_if_set(target)?;
+        self.resolve_reference(reference_id)
+    }
+
+    fn reference_id_for_target_if_set(&self, target: DeviceTarget) -> Option<ReferenceId> {
+        let reference_id = match target {
+            DeviceTarget::ReferenceId(reference_id) => reference_id,
+            DeviceTarget::Port(DevicePort::Db) => self.current_reference_id,
+            DeviceTarget::Port(port) => {
+                let index = port.pin_index()?;
+                self.pins[index]?
+            }
+        };
+        self.resolve_reference(reference_id)
+            .is_some()
+            .then_some(reference_id)
+    }
+
+    fn resolve_reference(&self, reference_id: ReferenceId) -> Option<&Device> {
+        if reference_id == self.current_reference_id {
+            return Some(&*self.current_device);
+        }
+        if let Some(device) = self
+            .devices
+            .iter()
+            .find(|device| device.reference_id() == Some(reference_id))
+        {
+            return Some(device);
+        }
+        self.ic_housings
+            .iter()
+            .find(|housing| housing.reference_id() == reference_id)
+            .map(IcHousing::device)
     }
 
     fn record_access(&mut self, operation: WorldAccessOperation, target: WorldAccessTarget) {
