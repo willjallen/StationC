@@ -61,7 +61,7 @@ Status values:
 | Zero comparisons | `seqz`, `snez`, `sgez`, `sgtz`, `slez`, `sltz` | Yes | Store `1` or `0`. |
 | Approximate comparisons | `sap`, `sna`, `sapz`, `snaz` | Yes | Uses the formulas documented in the reference. |
 | NaN predicates | `snan`, `snanz` | Yes | Store `1` or `0`. |
-| Device predicates | `sdns`, `sdse` | No | Requires device-presence predicate support. |
+| Device predicates | `sdns`, `sdse` | Yes | Unset pins and unknown `ReferenceId` targets are reported as predicate values, not runtime faults. |
 
 ## Branches and Calls
 
@@ -75,8 +75,8 @@ Status values:
 | Branch-and-link variants | `beqal`, `bneal`, `bgeal`, `bgtal`, `bleal`, `bltal`, zero variants | Yes | Link variants write `ra` before branching. |
 | Approximate branches | `bap`, `bna`, `bapz`, `bnaz`, relative and link variants | Yes | Includes relative and branch-and-link variants. |
 | NaN branches | `bnan`, `brnan` | Yes | No branch-and-link form is documented. |
-| Device set branches | `bdns`, `bdnsal`, `bdse`, `bdseal`, `brdns`, `brdse` | No | Not parsed yet. |
-| Device validity branches | `bdnvl`, `bdnvs` | No | Requires non-faulting logic-field validity checks. |
+| Device set branches | `bdns`, `bdnsal`, `bdse`, `bdseal`, `brdns`, `brdse` | Yes | Absolute, branch-and-link, and relative documented forms are covered. |
+| Device validity branches | `bdnvl`, `bdnvs` | Yes | Checks load/store capability without faulting on unset or missing targets. |
 
 ## Stack
 
@@ -112,6 +112,5 @@ Status values:
 | Area | Mnemonics |
 | --- | --- |
 | Execution control | `sleep` |
-| Device predicates and branches | `sdns`, `sdse`, `bdns`, `bdnsal`, `bdse`, `bdseal`, `brdns`, `brdse`, `bdnvl`, `bdnvs` |
 | Slot I/O | `ls`, `ss`, `lbs`, `lbns`, `sbs` |
 | Reagents | `lr`, `rmap` |
