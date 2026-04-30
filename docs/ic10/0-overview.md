@@ -22,6 +22,7 @@ Read the pages in numeric order:
 | [`5-instruction-reference-conditions.md`](5-instruction-reference-conditions.md) | Bitwise, comparison, selection, and branching instructions. |
 | [`6-device-and-slot-variables.md`](6-device-and-slot-variables.md) | Device logic variables, data network colors, slot variables, and filter values. |
 | [`7-patterns-and-examples.md`](7-patterns-and-examples.md) | Beginner patterns, debugging tricks, Schmitt triggers, call nesting, and examples. |
+| [`8-simulator-support.md`](8-simulator-support.md) | StationC simulator coverage for documented IC10 features. |
 
 ## Script Model
 
