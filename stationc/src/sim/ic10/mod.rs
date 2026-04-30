@@ -267,6 +267,8 @@ pub enum ErrorCode {
     InvalidIntegerOperand,
     /// A shift count was invalid.
     InvalidShiftOperand,
+    /// A bit field offset or length was invalid.
+    InvalidBitFieldRange,
     /// A relative jump offset could not be represented.
     RelativeJumpOutOfRange,
     /// A signed integer result could not be exactly represented as an IC10 number.
@@ -375,6 +377,7 @@ const fn ic10_fault_code(error: &ic10::Ic10Fault) -> ErrorCode {
         ic10::Ic10Fault::InvalidBatchMode(_) => ErrorCode::InvalidBatchMode,
         ic10::Ic10Fault::InvalidIntegerOperand(_) => ErrorCode::InvalidIntegerOperand,
         ic10::Ic10Fault::InvalidShiftOperand(_) => ErrorCode::InvalidShiftOperand,
+        ic10::Ic10Fault::InvalidBitFieldRange { .. } => ErrorCode::InvalidBitFieldRange,
         ic10::Ic10Fault::RelativeJumpOutOfRange(_) => ErrorCode::RelativeJumpOutOfRange,
         ic10::Ic10Fault::IntegerNotExactlyRepresentable(_) => {
             ErrorCode::IntegerNotExactlyRepresentable

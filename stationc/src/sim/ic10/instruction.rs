@@ -204,6 +204,8 @@ pub(super) enum TernaryOperation {
     Lerp,
     Sap,
     Sna,
+    Ext,
+    Ins,
 }
 
 #[derive(Debug, Clone)]

@@ -261,12 +261,25 @@ impl Ic10 {
         destination: RegisterRef,
         operands: [&ValueOperand; 3],
     ) -> Result<StepStop, Ic10Fault> {
-        let value = ternary(
-            operation,
-            self.value(operands[0])?,
-            self.value(operands[1])?,
-            self.value(operands[2])?,
-        );
+        let value = match operation {
+            TernaryOperation::Ext => bit_extract(
+                self.value(operands[0])?,
+                self.value(operands[1])?,
+                self.value(operands[2])?,
+            )?,
+            TernaryOperation::Ins => bit_insert(
+                self.registers.read(destination)?,
+                self.value(operands[0])?,
+                self.value(operands[1])?,
+                self.value(operands[2])?,
+            )?,
+            TernaryOperation::Lerp | TernaryOperation::Sap | TernaryOperation::Sna => ternary(
+                operation,
+                self.value(operands[0])?,
+                self.value(operands[1])?,
+                self.value(operands[2])?,
+            ),
+        };
         self.write(destination, value)?;
         Ok(StepStop::Continue)
     }
@@ -694,6 +707,7 @@ pub(super) enum Ic10Fault {
     InvalidBatchMode(f64),
     InvalidIntegerOperand(f64),
     InvalidShiftOperand(i64),
+    InvalidBitFieldRange { offset: i64, length: i64 },
     RelativeJumpOutOfRange(i64),
     IntegerNotExactlyRepresentable(i64),
     UnsignedIntegerNotExactlyRepresentable(u64),
@@ -727,6 +741,12 @@ impl fmt::Display for Ic10Fault {
             }
             Self::InvalidShiftOperand(value) => {
                 write!(formatter, "invalid shift operand `{value}`")
+            }
+            Self::InvalidBitFieldRange { offset, length } => {
+                write!(
+                    formatter,
+                    "invalid bit field range offset={offset} length={length}"
+                )
             }
             Self::RelativeJumpOutOfRange(value) => {
                 write!(formatter, "relative jump offset out of range `{value}`")
@@ -782,7 +802,52 @@ fn ternary(operation: TernaryOperation, first: f64, second: f64, third: f64) -> 
         TernaryOperation::Lerp => (second - first).mul_add(third.clamp(0.0, 1.0), first),
         TernaryOperation::Sap => bool_to_number(approximately(first, second, third)),
         TernaryOperation::Sna => bool_to_number(!approximately(first, second, third)),
+        TernaryOperation::Ext | TernaryOperation::Ins => unreachable!("handled before ternary"),
     }
+}
+
+fn bit_extract(source: f64, offset: f64, length: f64) -> Result<f64, Ic10Fault> {
+    let (offset, length) = bit_field_range(offset, length)?;
+    if length == 0 {
+        return Ok(0.0);
+    }
+    let source = i64_bits(f64_to_i64(source)?);
+    let value = (source >> offset) & bit_mask(length);
+    u64_to_f64(value)
+}
+
+fn bit_insert(base: f64, field: f64, offset: f64, length: f64) -> Result<f64, Ic10Fault> {
+    let (offset, length) = bit_field_range(offset, length)?;
+    if length == 0 {
+        return Ok(base);
+    }
+    let base = i64_bits(f64_to_i64(base)?);
+    let field = i64_bits(f64_to_i64(field)?) & bit_mask(length);
+    let shifted_mask = bit_mask(length) << offset;
+    let inserted = (base & !shifted_mask) | (field << offset);
+    i64_to_f64(i64::from_ne_bytes(inserted.to_ne_bytes()))
+}
+
+fn bit_field_range(offset: f64, length: f64) -> Result<(u32, u32), Ic10Fault> {
+    let offset = f64_to_i64(offset)?;
+    let length = f64_to_i64(length)?;
+    if offset < 0 || length < 0 || length > 53 || offset >= 64 || offset + length > 64 {
+        return Err(Ic10Fault::InvalidBitFieldRange { offset, length });
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Ok((offset as u32, length as u32))
+}
+
+fn bit_mask(length: u32) -> u64 {
+    if length == 64 {
+        u64::MAX
+    } else {
+        (1_u64 << length) - 1
+    }
+}
+
+const fn i64_bits(value: i64) -> u64 {
+    u64::from_ne_bytes(value.to_ne_bytes())
 }
 
 fn compare(operation: CompareOperation, left: f64, right: f64) -> bool {

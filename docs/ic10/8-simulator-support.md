@@ -56,7 +56,7 @@ Status values:
 | --- | --- | --- | --- |
 | Bitwise gates | `and`, `nor`, `not`, `or`, `xor` | Yes | Operands must be exact integer values. |
 | Shifts | `sla`, `sll`, `sra`, `srl` | Yes | Invalid shift operands fault. |
-| Bit fields | `ext`, `ins` | No | Not parsed yet. |
+| Bit fields | `ext`, `ins` | Yes | Length must be `0` through `53`, and the selected range must fit in 64 bits. |
 | Binary comparisons | `seq`, `sne`, `sge`, `sgt`, `sle`, `slt` | Yes | Store `1` or `0`. |
 | Zero comparisons | `seqz`, `snez`, `sgez`, `sgtz`, `slez`, `sltz` | Yes | Store `1` or `0`. |
 | Approximate comparisons | `sap`, `sna`, `sapz`, `snaz` | Yes | Uses the formulas documented in the reference. |
@@ -112,9 +112,7 @@ Status values:
 | Area | Mnemonics |
 | --- | --- |
 | Execution control | `sleep` |
-| Bit fields | `ext`, `ins` |
 | Device predicates and branches | `sdns`, `sdse`, `bdns`, `bdnsal`, `bdse`, `bdseal`, `brdns`, `brdse`, `bdnvl`, `bdnvs` |
 | Batch stores | `sb`, `sbn` |
 | Slot I/O | `ls`, `ss`, `lbs`, `lbns`, `sbs` |
 | Reagents | `lr`, `rmap` |
-

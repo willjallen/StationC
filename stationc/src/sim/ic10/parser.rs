@@ -849,6 +849,8 @@ fn ternary_operation(mnemonic: &str) -> Option<TernaryOperation> {
         "lerp" => Some(TernaryOperation::Lerp),
         "sap" => Some(TernaryOperation::Sap),
         "sna" => Some(TernaryOperation::Sna),
+        "ext" => Some(TernaryOperation::Ext),
+        "ins" => Some(TernaryOperation::Ins),
         _ => None,
     }
 }
