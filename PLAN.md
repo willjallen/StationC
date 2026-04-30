@@ -1789,10 +1789,10 @@ ReferenceId addressing
 PrefabHash and NameHash classification
 logic fields
 device reads and writes
-simple external device behavior
+scenario-defined mock device behavior
 ```
 
-The world tick loop should run each active IC10 chip for up to 128 instructions or until it yields, then advance the subset of device logic needed by the scenario. The first world simulator does not need to perfectly emulate Stationeers. It needs to be deterministic, inspectable, and accurate enough to test firmware assumptions about timing, stacks, devices, and multi-chip communication.
+The world tick loop should run each active IC10 chip for up to 128 instructions or until it yields, then advance the subset of mock device behavior declared by the scenario. The world simulator should not attempt to recreate Stationeers' full device simulation. It needs to be deterministic, inspectable, and accurate enough to test firmware assumptions about timing, stacks, devices, and multi-chip communication.
 
 The default world simulator should use a stable sequential IC10 order for
 repeatable tests. It should also support alternative deterministic schedules
@@ -2295,7 +2295,8 @@ batch_read
 batch_write
 ```
 
-Simulator should support mock devices.
+Simulator should support scenario-defined mock devices rather than built-in
+Stationeers device semantics.
 
 ### Phase 9: ROM/RAM scaling
 

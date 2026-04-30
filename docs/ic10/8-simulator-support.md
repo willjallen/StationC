@@ -92,7 +92,7 @@ Status values:
 
 | Feature | Instructions or surface | Support | Notes |
 | --- | --- | --- | --- |
-| Direct pins | `d0` through `d5` | Yes | World callers bind pins explicitly. |
+| Direct pins | `d0` through `d5` | Yes | Scenarios bind pins explicitly. |
 | Mounted device | `db` | Yes | Targets the current IC housing body in the world simulator. |
 | Direct logic load/store | `l`, `s` | Yes | Supports literal and dynamic logic fields. |
 | Direct ReferenceId logic | `ld`, `sd` | Yes | Direct IDs may come from literals or registers. |
@@ -102,7 +102,7 @@ Status values:
 | Batch slot logic | `lbs`, `lbns`, `sbs` | No | Slot state exists; batch slot traversal is not implemented. |
 | Reagents | `lr`, `rmap` | No | Reagent storage and mapping are not modeled. |
 | Device metadata | `ReferenceId`, `PrefabHash`, `NameHash` | Yes | Metadata fields are read-only. |
-| Arbitrary logic fields | Stationpedia logic values | Partial | Tests can attach arbitrary numeric fields; device-specific behavior is not modeled. |
+| Arbitrary logic fields | Stationpedia logic values | Partial | Scenarios can attach arbitrary numeric fields; device behavior is scenario-defined by design. |
 | Cable network channels | `d0:0`, `db:1`, `Channel0` through `Channel7` | No | Logic type constants exist, but connection operands and network storage do not. |
 | Access trace | world-facing reads and writes | Yes | Logic, stack-address, and whole-stack writes are traced. |
 | Schedule variation | stable, rotating, seeded shuffle | Yes | Used to expose ordering assumptions in world tests. |

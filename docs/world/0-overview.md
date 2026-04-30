@@ -4,9 +4,14 @@ This layer documents behavior above raw IC10 instructions. IC10 describes what
 one chip can execute. The world model describes how many chips, device state,
 world ticks, and StationC safety rules fit together.
 
-The goal is not to claim that every internal Stationeers scheduler detail is
-known. The goal is to define the assumptions StationC is allowed to make and the
-assumptions it must avoid.
+The goal is not to claim that every internal Stationeers scheduler or device
+detail is known. The goal is to define the assumptions StationC is allowed to
+make and the assumptions it must avoid.
+
+Device behavior in the world simulator is scenario-defined. A simulated device
+exposes the logic fields, slots, stack contents, and tick behavior declared by a
+test scenario. The world simulator is not a reimplementation of Stationeers'
+atmospherics, power, manufacturing, agriculture, or other device simulations.
 
 ## Pages
 
@@ -26,7 +31,7 @@ mental model is:
 for each world tick:
     for each active IC10 housing in some internal order:
         run until yield, sleep, halt, error, disabled, or budget exhaustion
-    advance world/device simulation state
+    advance scenario-defined device state
 ```
 
 The per-chip budget is the source of useful parallel throughput. Multiple IC10

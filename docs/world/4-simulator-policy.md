@@ -1,8 +1,22 @@
 # Simulator Policy
 
-The world simulator is a development tool. It does not need to perfectly
-recreate every private Stationeers implementation detail. It does need to make
-unsafe assumptions visible.
+The world simulator is a development tool. It does not need to recreate every
+private Stationeers implementation detail. It does need to make unsafe
+assumptions visible.
+
+## Scenario-Defined Devices
+
+Device behavior is mocked by each scenario. A scenario may define device logic
+fields, slot state, stack contents, and tick-time transitions that are relevant
+to the behavior under test.
+
+Built-in Stationeers device simulation is intentionally out of scope. The world
+simulator should not grow default models for atmospherics, electrical networks,
+manufacturing machines, agriculture devices, or other large game systems.
+
+The same rule applies to later StationOS simulations. They should test IC10,
+runtime, scheduling, bytecode, and world-interaction assumptions against
+explicit mock behavior, not against an attempted clone of Stationeers internals.
 
 ## Baseline Schedule
 
