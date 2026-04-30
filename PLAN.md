@@ -753,6 +753,45 @@ Host-only bytecode can include:
 
 In MVP, host code may be implemented with its own specialized firmware rather than fully interpreted. But the long-term design should allow the host to execute the same bytecode format for monolithic program logic.
 
+### 16.1 Split interpreter fallback
+
+The preferred design is one physical worker IC10 housing per StationOS worker.
+That keeps the worker ABI simple and gives each worker one independent IC10
+instruction budget.
+
+If the worker interpreter cannot fit within the vanilla IC10 source limits, a
+StationOS worker may instead be represented by a logical core made from two or
+more physical IC10 housings. In that model, each physical chip implements a
+partition of the bytecode interpreter. For example, one chip might implement
+arithmetic, branches, and local state, while another implements device, batch,
+RAM, and command-buffer opcodes.
+
+The split core should still look like one worker to the host scheduler. The host
+assigns one job to the logical core, not one job to each interpreter shard. The
+chips inside the core coordinate through a small shared control block:
+
+```text
+coreState
+pc
+opcode
+operand0
+operand1
+operand2
+ownerShard
+faultCode
+```
+
+Each shard can run the same initial fetch/decode step, determine whether the
+current opcode belongs to that shard, and either execute it or yield while the
+owning shard runs it. Only the owning shard may mutate the shared VM state for
+that opcode or advance `pc`. This preserves a single logical instruction stream
+while letting the physical interpreter implementation exceed one IC10 script.
+
+This is an escape hatch, not the first target. A split core spends IC10 budget on
+coordination and makes the worker ABI more complex. The v1 opcode set should
+still be chosen to fit one chip if possible, but the architecture should not
+depend on that being the only viable layout.
+
 ---
 
 ## 17. ROM banks
