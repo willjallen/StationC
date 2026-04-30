@@ -202,6 +202,20 @@ impl Ic10 {
                     mode: &mode,
                 },
             ),
+            Instruction::BatchStoreLogic {
+                prefab_hash,
+                name_hash,
+                field,
+                value,
+            } => self.execute_batch_store_logic(
+                environment,
+                BatchStoreOperands {
+                    prefab_hash: &prefab_hash,
+                    name_hash: name_hash.as_ref(),
+                    field: &field,
+                    value: &value,
+                },
+            ),
             Instruction::StoreLogic {
                 device,
                 field,
@@ -369,6 +383,22 @@ impl Ic10 {
         let mode = self.batch_mode(operands.mode)?;
         let value = environment.batch_load_logic(prefab_hash, name_hash, field, mode)?;
         self.write(operands.destination, value)?;
+        Ok(step_stop(environment))
+    }
+
+    fn execute_batch_store_logic<E: Ic10Environment>(
+        &self,
+        environment: &mut E,
+        operands: BatchStoreOperands<'_>,
+    ) -> Result<StepStop, Ic10Fault> {
+        let prefab_hash = self.value(operands.prefab_hash)?;
+        let name_hash = operands
+            .name_hash
+            .map(|operand| self.value(operand))
+            .transpose()?;
+        let field = self.logic_field(operands.field)?;
+        let value = self.value(operands.value)?;
+        environment.batch_store_logic(prefab_hash, name_hash, field, value)?;
         Ok(step_stop(environment))
     }
 
@@ -668,6 +698,14 @@ struct BatchLoadOperands<'a> {
     name_hash: Option<&'a ValueOperand>,
     field: &'a LogicFieldOperand,
     mode: &'a BatchModeOperand,
+}
+
+#[derive(Clone, Copy)]
+struct BatchStoreOperands<'a> {
+    prefab_hash: &'a ValueOperand,
+    name_hash: Option<&'a ValueOperand>,
+    field: &'a LogicFieldOperand,
+    value: &'a ValueOperand,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

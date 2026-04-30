@@ -97,7 +97,7 @@ Status values:
 | Direct logic load/store | `l`, `s` | Yes | Supports literal and dynamic logic fields. |
 | Direct ReferenceId logic | `ld`, `sd` | Yes | Direct IDs may come from literals or registers. |
 | Batch logic reads | `lb`, `lbn` | Yes | Supports prefab hash, optional name hash, dynamic fields, and all four modes. |
-| Batch logic stores | `sb`, `sbn` | No | Not parsed yet. |
+| Batch logic stores | `sb`, `sbn` | Yes | Supports prefab hash, optional name hash, dynamic fields, and dynamic values. |
 | Slot logic | `ls`, `ss` | No | Device slots are not modeled. |
 | Batch slot logic | `lbs`, `lbns`, `sbs` | No | Depends on slot modeling. |
 | Reagents | `lr`, `rmap` | No | Reagent storage and mapping are not modeled. |
@@ -113,6 +113,5 @@ Status values:
 | --- | --- |
 | Execution control | `sleep` |
 | Device predicates and branches | `sdns`, `sdse`, `bdns`, `bdnsal`, `bdse`, `bdseal`, `brdns`, `brdse`, `bdnvl`, `bdnvs` |
-| Batch stores | `sb`, `sbn` |
 | Slot I/O | `ls`, `ss`, `lbs`, `lbns`, `sbs` |
 | Reagents | `lr`, `rmap` |

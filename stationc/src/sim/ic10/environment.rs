@@ -141,6 +141,8 @@ pub enum EnvironmentOperation {
     LoadLogic,
     /// Read and aggregate logic fields from matching devices.
     BatchLoadLogic,
+    /// Write a logic field on matching devices.
+    BatchStoreLogic,
     /// Write a device logic field.
     StoreLogic,
     /// Clear device stack memory.
@@ -156,6 +158,7 @@ impl fmt::Display for EnvironmentOperation {
         match self {
             Self::LoadLogic => formatter.write_str("load logic"),
             Self::BatchLoadLogic => formatter.write_str("batch load logic"),
+            Self::BatchStoreLogic => formatter.write_str("batch store logic"),
             Self::StoreLogic => formatter.write_str("store logic"),
             Self::ClearStack => formatter.write_str("clear stack"),
             Self::GetStack => formatter.write_str("get stack"),
@@ -244,6 +247,19 @@ pub trait Ic10Environment {
         mode: BatchMode,
     ) -> Result<f64, EnvironmentFault>;
 
+    /// Writes a logic field on all matching world devices.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EnvironmentFault`] if the host cannot complete the batch write.
+    fn batch_store_logic(
+        &mut self,
+        prefab_hash: f64,
+        name_hash: Option<f64>,
+        field: &str,
+        value: f64,
+    ) -> Result<(), EnvironmentFault>;
+
     /// Writes a logic field on a device target.
     ///
     /// # Errors
@@ -309,6 +325,18 @@ impl Ic10Environment for NoEnvironment {
     ) -> Result<f64, EnvironmentFault> {
         Err(EnvironmentFault::WorldContextRequired {
             operation: EnvironmentOperation::BatchLoadLogic,
+        })
+    }
+
+    fn batch_store_logic(
+        &mut self,
+        _prefab_hash: f64,
+        _name_hash: Option<f64>,
+        _field: &str,
+        _value: f64,
+    ) -> Result<(), EnvironmentFault> {
+        Err(EnvironmentFault::WorldContextRequired {
+            operation: EnvironmentOperation::BatchStoreLogic,
         })
     }
 

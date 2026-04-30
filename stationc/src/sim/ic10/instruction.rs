@@ -88,6 +88,12 @@ pub(super) enum Instruction {
         field: LogicFieldOperand,
         mode: BatchModeOperand,
     },
+    BatchStoreLogic {
+        prefab_hash: ValueOperand,
+        name_hash: Option<ValueOperand>,
+        field: LogicFieldOperand,
+        value: ValueOperand,
+    },
     StoreLogic {
         device: DeviceOperand,
         field: LogicFieldOperand,

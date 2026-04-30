@@ -277,7 +277,7 @@ fn parse_instruction(
         "move" | "rand" | "select" => parse_register_instruction(tokens, context),
         "push" | "pop" | "peek" | "poke" => parse_local_stack_instruction(tokens, context),
         "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
-        "lb" | "lbn" => parse_batch_logic_instruction(tokens, context),
+        "lb" | "lbn" | "sb" | "sbn" => parse_batch_logic_instruction(tokens, context),
         "clr" | "clrd" | "get" | "put" | "getd" | "putd" => {
             parse_device_stack_instruction(tokens, context)
         }
@@ -442,6 +442,8 @@ fn parse_batch_logic_instruction(
     match tokens[0] {
         "lb" => parse_batch_load_logic_instruction(tokens, context),
         "lbn" => parse_batch_load_logic_by_name_instruction(tokens, context),
+        "sb" => parse_batch_store_logic_instruction(tokens, context),
+        "sbn" => parse_batch_store_logic_by_name_instruction(tokens, context),
         mnemonic => unsupported_instruction(mnemonic, context.line_number),
     }
 }
@@ -471,6 +473,32 @@ fn parse_batch_load_logic_by_name_instruction(
         name_hash: Some(parse_value(tokens[3], context)),
         field: parse_logic_field(tokens[4], context),
         mode: parse_batch_mode(tokens[5], context),
+    })
+}
+
+fn parse_batch_store_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 4, context.line_number)?;
+    Ok(Instruction::BatchStoreLogic {
+        prefab_hash: parse_value(tokens[1], context),
+        name_hash: None,
+        field: parse_logic_field(tokens[2], context),
+        value: parse_value(tokens[3], context),
+    })
+}
+
+fn parse_batch_store_logic_by_name_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 5, context.line_number)?;
+    Ok(Instruction::BatchStoreLogic {
+        prefab_hash: parse_value(tokens[1], context),
+        name_hash: Some(parse_value(tokens[2], context)),
+        field: parse_logic_field(tokens[3], context),
+        value: parse_value(tokens[4], context),
     })
 }
 

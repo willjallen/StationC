@@ -284,6 +284,43 @@ impl Ic10Environment for WorldIc10Context<'_> {
         Ok(value)
     }
 
+    fn batch_store_logic(
+        &mut self,
+        prefab_hash: f64,
+        name_hash: Option<f64>,
+        field: &str,
+        value: f64,
+    ) -> Result<(), EnvironmentFault> {
+        let mut writes = Vec::new();
+        let query = BatchWriteQuery {
+            prefab_hash,
+            name_hash,
+            field,
+            value,
+        };
+        collect_batch_write(
+            self.current_reference_id,
+            self.current_device,
+            query,
+            &mut writes,
+        )?;
+        for device in self.devices.iter_mut() {
+            let Some(reference_id) = device.reference_id() else {
+                continue;
+            };
+            collect_batch_write(reference_id, device, query, &mut writes)?;
+        }
+        for housing in self.ic_housings.iter_mut() {
+            let reference_id = housing.reference_id();
+            collect_batch_write(reference_id, housing.device_mut(), query, &mut writes)?;
+        }
+
+        for target in writes {
+            self.record_access(WorldAccessOperation::Write, target);
+        }
+        Ok(())
+    }
+
     fn store_logic(
         &mut self,
         target: DeviceTarget,
@@ -420,6 +457,14 @@ struct BatchReadQuery<'a> {
     field: &'a str,
 }
 
+#[derive(Clone, Copy)]
+struct BatchWriteQuery<'a> {
+    prefab_hash: f64,
+    name_hash: Option<f64>,
+    field: &'a str,
+    value: f64,
+}
+
 fn collect_batch_read(
     reference_id: ReferenceId,
     device: &Device,
@@ -437,6 +482,23 @@ fn collect_batch_read(
             field: query.field.to_owned(),
         },
     ));
+    Ok(())
+}
+
+fn collect_batch_write(
+    reference_id: ReferenceId,
+    device: &mut Device,
+    query: BatchWriteQuery<'_>,
+    writes: &mut Vec<WorldAccessTarget>,
+) -> Result<(), EnvironmentFault> {
+    if !batch_device_matches(device, query.prefab_hash, query.name_hash) {
+        return Ok(());
+    }
+    device.store_logic(query.field, query.value)?;
+    writes.push(WorldAccessTarget::DeviceLogic {
+        reference_id,
+        field: query.field.to_owned(),
+    });
     Ok(())
 }
 

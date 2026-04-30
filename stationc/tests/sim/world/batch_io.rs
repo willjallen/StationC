@@ -1,5 +1,5 @@
 use stationc::sim::{
-    ic10::{DevicePort, ErrorCode, StopReason},
+    ic10::{DevicePort, ErrorCode, Ic10, StopReason},
     world::{Device, World, WorldAccessOperation, WorldAccessTarget, WorldError},
 };
 
@@ -247,6 +247,144 @@ yield
 }
 
 #[test]
+fn batch_store_updates_matching_prefab_devices() -> TestResult {
+    let mut world = World::new();
+    let first = world.add_device(Device::new().with_prefab_hash(100.0).with_logic("On", 0.0));
+    let second = world.add_device(Device::new().with_prefab_hash(100.0).with_logic("On", 1.0));
+    let other = world.add_device(Device::new().with_prefab_hash(200.0).with_logic("On", 9.0));
+    let housing = world.add_ic10_housing(
+        "\
+sb 100 On 7
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_device_logic(&world, first, "On", 7.0)?;
+    assert_device_logic(&world, second, "On", 7.0)?;
+    assert_device_logic(&world, other, "On", 9.0)?;
+    assert_eq!(tick.access.len(), 2);
+    assert_eq!(tick.access[0].actor, housing);
+    assert_eq!(tick.access[0].operation, WorldAccessOperation::Write);
+    assert_eq!(
+        tick.access[0].target,
+        WorldAccessTarget::DeviceLogic {
+            reference_id: first,
+            field: "On".to_owned(),
+        }
+    );
+    assert_eq!(
+        tick.access[1].target,
+        WorldAccessTarget::DeviceLogic {
+            reference_id: second,
+            field: "On".to_owned(),
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn batch_store_by_name_updates_matching_names_only() -> TestResult {
+    let mut world = World::new();
+    let target = world.add_device(
+        Device::new()
+            .with_prefab_hash(500.0)
+            .with_name_hash(10.0)
+            .with_logic("Mode", 0.0),
+    );
+    let same_prefab_other_name = world.add_device(
+        Device::new()
+            .with_prefab_hash(500.0)
+            .with_name_hash(20.0)
+            .with_logic("Mode", 0.0),
+    );
+    let other_prefab = world.add_device(
+        Device::new()
+            .with_prefab_hash(600.0)
+            .with_name_hash(10.0)
+            .with_logic("Mode", 0.0),
+    );
+    world.add_ic10_housing(
+        "\
+sbn 500 10 Mode 3
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_device_logic(&world, target, "Mode", 3.0)?;
+    assert_device_logic(&world, same_prefab_other_name, "Mode", 0.0)?;
+    assert_device_logic(&world, other_prefab, "Mode", 0.0)?;
+    assert_eq!(tick.access.len(), 1);
+    assert_eq!(
+        tick.access[0].target,
+        WorldAccessTarget::DeviceLogic {
+            reference_id: target,
+            field: "Mode".to_owned(),
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn dynamic_batch_store_operands_can_come_from_registers() -> TestResult {
+    let prefab_hash = hash_literal_value("StructureWallLight");
+
+    let mut world = World::new();
+    let first = world.add_device(
+        Device::new()
+            .with_prefab_hash(prefab_hash)
+            .with_logic("On", 0.0)
+            .with_logic("Setting", 0.0),
+    );
+    let second = world.add_device(
+        Device::new()
+            .with_prefab_hash(prefab_hash)
+            .with_logic("On", 0.0)
+            .with_logic("Setting", 0.0),
+    );
+    let housing = world.add_ic10_housing(
+        "\
+move r1 HASH(\"StructureWallLight\")
+move r2 LogicType.Setting
+move r3 42
+sb r1 r2 r3
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 5, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 3, 42.0)?;
+    assert_device_logic(&world, first, "Setting", 42.0)?;
+    assert_device_logic(&world, second, "Setting", 42.0)
+}
+
+#[test]
+fn batch_store_no_matches_is_noop() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(Device::new().with_prefab_hash(100.0).with_logic("On", 1.0));
+    let housing = world.add_ic10_housing(
+        "\
+sb 999 On 0
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_device_logic(&world, device, "On", 1.0)?;
+    assert_eq!(tick.access.len(), 0);
+    assert_housing_register(&world, housing, 0, 0.0)
+}
+
+#[test]
 fn batch_load_missing_field_on_matching_device_is_typed_error() -> TestResult {
     let mut world = World::new();
     world.add_device(Device::new().with_prefab_hash(100.0).with_logic("On", 1.0));
@@ -260,6 +398,56 @@ yield
     let error = tick_error(&mut world)?;
 
     assert_ic10_error_code(error, ErrorCode::UnknownLogicField)
+}
+
+#[test]
+fn batch_store_missing_field_on_matching_device_is_typed_error() -> TestResult {
+    let mut world = World::new();
+    world.add_device(Device::new().with_prefab_hash(100.0).with_logic("On", 1.0));
+    world.add_ic10_housing(
+        "\
+sb 100 Temperature 300
+yield
+",
+    )?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::UnknownLogicField)
+}
+
+#[test]
+fn batch_store_read_only_field_is_typed_error() -> TestResult {
+    let mut world = World::new();
+    world.add_device(Device::new().with_prefab_hash(100.0).with_logic("On", 1.0));
+    world.add_ic10_housing(
+        "\
+sb 100 ReferenceId 10
+yield
+",
+    )?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::ReadOnlyLogicField)
+}
+
+#[test]
+fn standalone_ic10_requires_world_context_for_batch_store() -> TestResult {
+    let mut ic10 = Ic10::from_source(
+        "\
+sb 100 On 1
+yield
+",
+    )?;
+
+    let error = match ic10.run_until_yield_or_budget(128) {
+        Ok(result) => return Err(format!("expected IC10 error, got {result:?}").into()),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.code(), ErrorCode::WorldContextRequired);
+    Ok(())
 }
 
 #[test]
