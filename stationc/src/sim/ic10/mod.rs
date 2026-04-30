@@ -14,8 +14,8 @@ mod trace;
 use std::{env, error::Error as StdError, fmt, fs, path::PathBuf, process::ExitCode};
 
 pub use environment::{
-    BatchMode, DevicePort, DeviceTarget, EnvironmentFault, EnvironmentOperation, Ic10Environment,
-    NoEnvironment, ReferenceId,
+    BatchMode, BatchSlotLoadRequest, DevicePort, DeviceTarget, EnvironmentFault,
+    EnvironmentOperation, Ic10Environment, NoEnvironment, ReferenceId,
 };
 use ic10::{Ic10 as CoreIc10, RunStop};
 use parser::parse_program;

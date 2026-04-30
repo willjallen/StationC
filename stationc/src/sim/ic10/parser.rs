@@ -280,7 +280,9 @@ fn parse_instruction(
         "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
         "ls" | "ss" => parse_slot_logic_instruction(tokens, context),
         "sdns" | "sdse" => parse_device_predicate_instruction(tokens, context),
-        "lb" | "lbn" | "sb" | "sbn" => parse_batch_logic_instruction(tokens, context),
+        "lb" | "lbn" | "lbs" | "lbns" | "sb" | "sbn" | "sbs" => {
+            parse_batch_logic_instruction(tokens, context)
+        }
         "clr" | "clrd" | "get" | "put" | "getd" | "putd" => {
             parse_device_stack_instruction(tokens, context)
         }
@@ -499,8 +501,11 @@ fn parse_batch_logic_instruction(
     match tokens[0] {
         "lb" => parse_batch_load_logic_instruction(tokens, context),
         "lbn" => parse_batch_load_logic_by_name_instruction(tokens, context),
+        "lbs" => parse_batch_load_slot_logic_instruction(tokens, context),
+        "lbns" => parse_batch_load_slot_logic_by_name_instruction(tokens, context),
         "sb" => parse_batch_store_logic_instruction(tokens, context),
         "sbn" => parse_batch_store_logic_by_name_instruction(tokens, context),
+        "sbs" => parse_batch_store_slot_logic_instruction(tokens, context),
         mnemonic => unsupported_instruction(mnemonic, context.line_number),
     }
 }
@@ -533,6 +538,36 @@ fn parse_batch_load_logic_by_name_instruction(
     })
 }
 
+fn parse_batch_load_slot_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 6, context.line_number)?;
+    Ok(Instruction::BatchLoadSlotLogic {
+        destination: parse_register(tokens[1], context)?,
+        prefab_hash: parse_value(tokens[2], context),
+        name_hash: None,
+        slot: parse_value(tokens[3], context),
+        field: parse_logic_field(tokens[4], context),
+        mode: parse_batch_mode(tokens[5], context),
+    })
+}
+
+fn parse_batch_load_slot_logic_by_name_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 7, context.line_number)?;
+    Ok(Instruction::BatchLoadSlotLogic {
+        destination: parse_register(tokens[1], context)?,
+        prefab_hash: parse_value(tokens[2], context),
+        name_hash: Some(parse_value(tokens[3], context)),
+        slot: parse_value(tokens[4], context),
+        field: parse_logic_field(tokens[5], context),
+        mode: parse_batch_mode(tokens[6], context),
+    })
+}
+
 fn parse_batch_store_logic_instruction(
     tokens: &[&str],
     context: ParseContext<'_>,
@@ -554,6 +589,19 @@ fn parse_batch_store_logic_by_name_instruction(
     Ok(Instruction::BatchStoreLogic {
         prefab_hash: parse_value(tokens[1], context),
         name_hash: Some(parse_value(tokens[2], context)),
+        field: parse_logic_field(tokens[3], context),
+        value: parse_value(tokens[4], context),
+    })
+}
+
+fn parse_batch_store_slot_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 5, context.line_number)?;
+    Ok(Instruction::BatchStoreSlotLogic {
+        prefab_hash: parse_value(tokens[1], context),
+        slot: parse_value(tokens[2], context),
         field: parse_logic_field(tokens[3], context),
         value: parse_value(tokens[4], context),
     })

@@ -4,8 +4,8 @@ use std::{cmp::Ordering, fmt};
 
 use super::{
     environment::{
-        BatchMode, DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment, NoEnvironment,
-        ReferenceId,
+        BatchMode, BatchSlotLoadRequest, DevicePort, DeviceTarget, EnvironmentFault,
+        Ic10Environment, NoEnvironment, ReferenceId,
     },
     instruction::{
         ApproxOperation, ApproxZeroOperation, BatchModeOperand, BinaryOperation, BranchCondition,
@@ -203,6 +203,24 @@ impl Ic10 {
                     mode: &mode,
                 },
             ),
+            Instruction::BatchLoadSlotLogic {
+                destination,
+                prefab_hash,
+                name_hash,
+                slot,
+                field,
+                mode,
+            } => self.execute_batch_load_slot_logic(
+                environment,
+                BatchSlotLoadOperands {
+                    destination,
+                    prefab_hash: &prefab_hash,
+                    name_hash: name_hash.as_ref(),
+                    slot: &slot,
+                    field: &field,
+                    mode: &mode,
+                },
+            ),
             Instruction::BatchStoreLogic {
                 prefab_hash,
                 name_hash,
@@ -213,6 +231,20 @@ impl Ic10 {
                 BatchStoreOperands {
                     prefab_hash: &prefab_hash,
                     name_hash: name_hash.as_ref(),
+                    field: &field,
+                    value: &value,
+                },
+            ),
+            Instruction::BatchStoreSlotLogic {
+                prefab_hash,
+                slot,
+                field,
+                value,
+            } => self.execute_batch_store_slot_logic(
+                environment,
+                BatchSlotStoreOperands {
+                    prefab_hash: &prefab_hash,
+                    slot: &slot,
                     field: &field,
                     value: &value,
                 },
@@ -433,6 +465,43 @@ impl Ic10 {
         let field = self.logic_field(operands.field)?;
         let value = self.value(operands.value)?;
         environment.batch_store_logic(prefab_hash, name_hash, field, value)?;
+        Ok(step_stop(environment))
+    }
+
+    fn execute_batch_load_slot_logic<E: Ic10Environment>(
+        &mut self,
+        environment: &mut E,
+        operands: BatchSlotLoadOperands<'_>,
+    ) -> Result<StepStop, Ic10Fault> {
+        let prefab_hash = self.value(operands.prefab_hash)?;
+        let name_hash = operands
+            .name_hash
+            .map(|operand| self.value(operand))
+            .transpose()?;
+        let slot = numeric_index(self.value(operands.slot)?)?;
+        let field = self.logic_field(operands.field)?;
+        let mode = self.batch_mode(operands.mode)?;
+        let value = environment.batch_load_slot_logic(BatchSlotLoadRequest {
+            prefab_hash,
+            name_hash,
+            slot,
+            field,
+            mode,
+        })?;
+        self.write(operands.destination, value)?;
+        Ok(step_stop(environment))
+    }
+
+    fn execute_batch_store_slot_logic<E: Ic10Environment>(
+        &self,
+        environment: &mut E,
+        operands: BatchSlotStoreOperands<'_>,
+    ) -> Result<StepStop, Ic10Fault> {
+        let prefab_hash = self.value(operands.prefab_hash)?;
+        let slot = numeric_index(self.value(operands.slot)?)?;
+        let field = self.logic_field(operands.field)?;
+        let value = self.value(operands.value)?;
+        environment.batch_store_slot_logic(prefab_hash, slot, field, value)?;
         Ok(step_stop(environment))
     }
 
@@ -802,6 +871,24 @@ struct BatchLoadOperands<'a> {
 struct BatchStoreOperands<'a> {
     prefab_hash: &'a ValueOperand,
     name_hash: Option<&'a ValueOperand>,
+    field: &'a LogicFieldOperand,
+    value: &'a ValueOperand,
+}
+
+#[derive(Clone, Copy)]
+struct BatchSlotLoadOperands<'a> {
+    destination: RegisterRef,
+    prefab_hash: &'a ValueOperand,
+    name_hash: Option<&'a ValueOperand>,
+    slot: &'a ValueOperand,
+    field: &'a LogicFieldOperand,
+    mode: &'a BatchModeOperand,
+}
+
+#[derive(Clone, Copy)]
+struct BatchSlotStoreOperands<'a> {
+    prefab_hash: &'a ValueOperand,
+    slot: &'a ValueOperand,
     field: &'a LogicFieldOperand,
     value: &'a ValueOperand,
 }

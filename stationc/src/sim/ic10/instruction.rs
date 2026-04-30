@@ -88,9 +88,23 @@ pub(super) enum Instruction {
         field: LogicFieldOperand,
         mode: BatchModeOperand,
     },
+    BatchLoadSlotLogic {
+        destination: RegisterRef,
+        prefab_hash: ValueOperand,
+        name_hash: Option<ValueOperand>,
+        slot: ValueOperand,
+        field: LogicFieldOperand,
+        mode: BatchModeOperand,
+    },
     BatchStoreLogic {
         prefab_hash: ValueOperand,
         name_hash: Option<ValueOperand>,
+        field: LogicFieldOperand,
+        value: ValueOperand,
+    },
+    BatchStoreSlotLogic {
+        prefab_hash: ValueOperand,
+        slot: ValueOperand,
         field: LogicFieldOperand,
         value: ValueOperand,
     },

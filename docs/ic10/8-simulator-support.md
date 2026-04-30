@@ -99,7 +99,7 @@ Status values:
 | Batch logic reads | `lb`, `lbn` | Yes | Supports prefab hash, optional name hash, dynamic fields, and all four modes. |
 | Batch logic stores | `sb`, `sbn` | Yes | Supports prefab hash, optional name hash, dynamic fields, and dynamic values. |
 | Slot logic | `ls`, `ss` | Yes | Supports pin, alias, `db`, indirect pin, dynamic slot index, and dynamic slot fields; direct `ReferenceId` slot access is rejected per the docs. |
-| Batch slot logic | `lbs`, `lbns`, `sbs` | No | Slot state exists; batch slot traversal is not implemented. |
+| Batch slot logic | `lbs`, `lbns`, `sbs` | Yes | Supports prefab hash, optional name hash for reads, dynamic slot index, dynamic slot fields, and all four read modes. |
 | Reagents | `lr`, `rmap` | No | Reagent storage and mapping are not modeled. |
 | Device metadata | `ReferenceId`, `PrefabHash`, `NameHash` | Yes | Metadata fields are read-only. |
 | Arbitrary logic fields | Stationpedia logic values | Partial | Scenarios can attach arbitrary numeric fields; device behavior is scenario-defined by design. |
@@ -112,5 +112,4 @@ Status values:
 | Area | Mnemonics |
 | --- | --- |
 | Execution control | `sleep` |
-| Slot I/O | `lbs`, `lbns`, `sbs` |
 | Reagents | `lr`, `rmap` |

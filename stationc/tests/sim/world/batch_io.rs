@@ -1,9 +1,11 @@
 use stationc::sim::{
     ic10::{DevicePort, ErrorCode, Ic10, StopReason},
-    world::{Device, World, WorldAccessOperation, WorldAccessTarget, WorldError},
+    world::{Device, DeviceSlot, World, WorldAccessOperation, WorldAccessTarget, WorldError},
 };
 
-use super::support::{TestResult, assert_device_logic, assert_housing_register, assert_tick};
+use super::support::{
+    TestResult, assert_device_logic, assert_device_slot_logic, assert_housing_register, assert_tick,
+};
 
 #[test]
 fn batch_load_modes_aggregate_matching_prefab_devices() -> TestResult {
@@ -366,6 +368,195 @@ yield
 }
 
 #[test]
+fn batch_slot_load_modes_aggregate_matching_prefab_slots() -> TestResult {
+    let mut world = World::new();
+    let first = world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_slot(2, DeviceSlot::new().with_logic("Occupied", 1.0)),
+    );
+    let second = world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_slot(2, DeviceSlot::new().with_logic("Occupied", 3.0)),
+    );
+    world.add_device(
+        Device::new()
+            .with_prefab_hash(200.0)
+            .with_slot(2, DeviceSlot::new().with_logic("Occupied", 9.0)),
+    );
+    let housing = world.add_ic10_housing(
+        "\
+lbs r0 100 2 Occupied Sum
+lbs r1 100 2 Occupied Average
+lbs r2 100 2 Occupied Minimum
+lbs r3 100 2 Occupied Maximum
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 5, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, 4.0)?;
+    assert_housing_register(&world, housing, 1, 2.0)?;
+    assert_housing_register(&world, housing, 2, 1.0)?;
+    assert_housing_register(&world, housing, 3, 3.0)?;
+    assert_eq!(tick.access.len(), 8);
+    assert_eq!(
+        tick.access[0].target,
+        WorldAccessTarget::DeviceSlotLogic {
+            reference_id: first,
+            slot: 2,
+            field: "Occupied".to_owned(),
+        }
+    );
+    assert_eq!(
+        tick.access[1].target,
+        WorldAccessTarget::DeviceSlotLogic {
+            reference_id: second,
+            slot: 2,
+            field: "Occupied".to_owned(),
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn batch_slot_load_by_name_filters_matching_prefab_slots() -> TestResult {
+    let mut world = World::new();
+    world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_name_hash(10.0)
+            .with_slot(0, DeviceSlot::new().with_logic("Quantity", 2.0)),
+    );
+    world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_name_hash(10.0)
+            .with_slot(0, DeviceSlot::new().with_logic("Quantity", 6.0)),
+    );
+    world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_name_hash(20.0)
+            .with_slot(0, DeviceSlot::new().with_logic("Quantity", 100.0)),
+    );
+    let housing = world.add_ic10_housing(
+        "\
+lbns r0 100 10 0 Quantity Average
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, 4.0)?;
+    assert_eq!(tick.access.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn dynamic_batch_slot_operands_can_come_from_registers() -> TestResult {
+    let mut world = World::new();
+    world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_slot(0, DeviceSlot::new().with_logic("Setting", 2.0)),
+    );
+    world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_slot(0, DeviceSlot::new().with_logic("Setting", 6.0)),
+    );
+    let housing = world.add_ic10_housing(
+        "\
+move r1 100
+move r2 0
+move r3 LogicType.Setting
+move r4 1
+lbs r0 r1 r2 r3 r4
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 6, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, 8.0)
+}
+
+#[test]
+fn batch_slot_store_updates_matching_prefab_slots() -> TestResult {
+    let mut world = World::new();
+    let first = world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_slot(0, DeviceSlot::new().with_logic("Setting", 0.0)),
+    );
+    let second = world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_slot(0, DeviceSlot::new().with_logic("Setting", 1.0)),
+    );
+    let other = world.add_device(
+        Device::new()
+            .with_prefab_hash(200.0)
+            .with_slot(0, DeviceSlot::new().with_logic("Setting", 9.0)),
+    );
+    world.add_ic10_housing(
+        "\
+sbs 100 0 Setting 7
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_device_slot_logic(&world, first, 0, "Setting", 7.0)?;
+    assert_device_slot_logic(&world, second, 0, "Setting", 7.0)?;
+    assert_device_slot_logic(&world, other, 0, "Setting", 9.0)?;
+    assert_eq!(tick.access.len(), 2);
+    assert_eq!(tick.access[0].operation, WorldAccessOperation::Write);
+    assert_eq!(
+        tick.access[0].target,
+        WorldAccessTarget::DeviceSlotLogic {
+            reference_id: first,
+            slot: 0,
+            field: "Setting".to_owned(),
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn batch_slot_no_matches_returns_documented_empty_values() -> TestResult {
+    let mut world = World::new();
+    let housing = world.add_ic10_housing(
+        "\
+lbs r0 999 0 Quantity Average
+lbs r1 999 0 Quantity Sum
+lbs r2 999 0 Quantity Minimum
+lbs r3 999 0 Quantity Maximum
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 5, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, f64::NAN)?;
+    assert_housing_register(&world, housing, 1, 0.0)?;
+    assert_housing_register(&world, housing, 2, 0.0)?;
+    assert_housing_register(&world, housing, 3, f64::NEG_INFINITY)?;
+    assert_eq!(tick.access.len(), 0);
+    Ok(())
+}
+
+#[test]
 fn batch_store_no_matches_is_noop() -> TestResult {
     let mut world = World::new();
     let device = world.add_device(Device::new().with_prefab_hash(100.0).with_logic("On", 1.0));
@@ -433,6 +624,42 @@ yield
 }
 
 #[test]
+fn batch_slot_load_missing_slot_on_matching_device_is_typed_error() -> TestResult {
+    let mut world = World::new();
+    world.add_device(Device::new().with_prefab_hash(100.0));
+    world.add_ic10_housing(
+        "\
+lbs r0 100 0 Quantity Average
+yield
+",
+    )?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::UnknownSlot)
+}
+
+#[test]
+fn batch_slot_store_read_only_field_is_typed_error() -> TestResult {
+    let mut world = World::new();
+    world.add_device(
+        Device::new()
+            .with_prefab_hash(100.0)
+            .with_slot(0, DeviceSlot::new().with_read_only_logic("Quantity", 1.0)),
+    );
+    world.add_ic10_housing(
+        "\
+sbs 100 0 Quantity 7
+yield
+",
+    )?;
+
+    let error = tick_error(&mut world)?;
+
+    assert_ic10_error_code(error, ErrorCode::ReadOnlyLogicField)
+}
+
+#[test]
 fn standalone_ic10_requires_world_context_for_batch_store() -> TestResult {
     let mut ic10 = Ic10::from_source(
         "\
@@ -446,6 +673,36 @@ yield
         Err(error) => error,
     };
 
+    assert_eq!(error.code(), ErrorCode::WorldContextRequired);
+    Ok(())
+}
+
+#[test]
+fn standalone_ic10_requires_world_context_for_batch_slot_io() -> TestResult {
+    let mut ic10 = Ic10::from_source(
+        "\
+lbs r0 100 0 Quantity Average
+yield
+",
+    )?;
+
+    let error = match ic10.run_until_yield_or_budget(128) {
+        Ok(result) => return Err(format!("expected IC10 error, got {result:?}").into()),
+        Err(error) => error,
+    };
+    assert_eq!(error.code(), ErrorCode::WorldContextRequired);
+
+    let mut ic10 = Ic10::from_source(
+        "\
+sbs 100 0 Quantity 1
+yield
+",
+    )?;
+
+    let error = match ic10.run_until_yield_or_budget(128) {
+        Ok(result) => return Err(format!("expected IC10 error, got {result:?}").into()),
+        Err(error) => error,
+    };
     assert_eq!(error.code(), ErrorCode::WorldContextRequired);
     Ok(())
 }

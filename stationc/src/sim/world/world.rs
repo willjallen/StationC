@@ -3,7 +3,8 @@
 use std::{error::Error as StdError, fmt};
 
 use crate::sim::ic10::{
-    BatchMode, DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment, ReferenceId,
+    BatchMode, BatchSlotLoadRequest, DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment,
+    ReferenceId,
 };
 
 use super::{
@@ -321,6 +322,77 @@ impl Ic10Environment for WorldIc10Context<'_> {
         Ok(())
     }
 
+    fn batch_load_slot_logic(
+        &mut self,
+        request: BatchSlotLoadRequest<'_>,
+    ) -> Result<f64, EnvironmentFault> {
+        let mut reads = Vec::new();
+        let query = BatchSlotReadQuery {
+            prefab_hash: request.prefab_hash,
+            name_hash: request.name_hash,
+            slot: request.slot,
+            field: request.field,
+        };
+        collect_batch_slot_read(
+            self.current_reference_id,
+            &*self.current_device,
+            query,
+            &mut reads,
+        )?;
+        for device in self.devices.iter() {
+            let Some(reference_id) = device.reference_id() else {
+                continue;
+            };
+            collect_batch_slot_read(reference_id, device, query, &mut reads)?;
+        }
+        for housing in self.ic_housings.iter() {
+            collect_batch_slot_read(housing.reference_id(), housing.device(), query, &mut reads)?;
+        }
+
+        let value = aggregate_batch_values(&reads, request.mode);
+        for (_, target) in reads {
+            self.record_access(WorldAccessOperation::Read, target);
+        }
+        Ok(value)
+    }
+
+    fn batch_store_slot_logic(
+        &mut self,
+        prefab_hash: f64,
+        slot: usize,
+        field: &str,
+        value: f64,
+    ) -> Result<(), EnvironmentFault> {
+        let mut writes = Vec::new();
+        let query = BatchSlotWriteQuery {
+            prefab_hash,
+            slot,
+            field,
+            value,
+        };
+        collect_batch_slot_write(
+            self.current_reference_id,
+            self.current_device,
+            query,
+            &mut writes,
+        )?;
+        for device in self.devices.iter_mut() {
+            let Some(reference_id) = device.reference_id() else {
+                continue;
+            };
+            collect_batch_slot_write(reference_id, device, query, &mut writes)?;
+        }
+        for housing in self.ic_housings.iter_mut() {
+            let reference_id = housing.reference_id();
+            collect_batch_slot_write(reference_id, housing.device_mut(), query, &mut writes)?;
+        }
+
+        for target in writes {
+            self.record_access(WorldAccessOperation::Write, target);
+        }
+        Ok(())
+    }
+
     fn store_logic(
         &mut self,
         target: DeviceTarget,
@@ -560,6 +632,22 @@ struct BatchWriteQuery<'a> {
     value: f64,
 }
 
+#[derive(Clone, Copy)]
+struct BatchSlotReadQuery<'a> {
+    prefab_hash: f64,
+    name_hash: Option<f64>,
+    slot: usize,
+    field: &'a str,
+}
+
+#[derive(Clone, Copy)]
+struct BatchSlotWriteQuery<'a> {
+    prefab_hash: f64,
+    slot: usize,
+    field: &'a str,
+    value: f64,
+}
+
 fn collect_batch_read(
     reference_id: ReferenceId,
     device: &Device,
@@ -592,6 +680,45 @@ fn collect_batch_write(
     device.store_logic(query.field, query.value)?;
     writes.push(WorldAccessTarget::DeviceLogic {
         reference_id,
+        field: query.field.to_owned(),
+    });
+    Ok(())
+}
+
+fn collect_batch_slot_read(
+    reference_id: ReferenceId,
+    device: &Device,
+    query: BatchSlotReadQuery<'_>,
+    reads: &mut Vec<(f64, WorldAccessTarget)>,
+) -> Result<(), EnvironmentFault> {
+    if !batch_device_matches(device, query.prefab_hash, query.name_hash) {
+        return Ok(());
+    }
+    let value = device.load_slot_logic(query.slot, query.field)?;
+    reads.push((
+        value,
+        WorldAccessTarget::DeviceSlotLogic {
+            reference_id,
+            slot: query.slot,
+            field: query.field.to_owned(),
+        },
+    ));
+    Ok(())
+}
+
+fn collect_batch_slot_write(
+    reference_id: ReferenceId,
+    device: &mut Device,
+    query: BatchSlotWriteQuery<'_>,
+    writes: &mut Vec<WorldAccessTarget>,
+) -> Result<(), EnvironmentFault> {
+    if !same_ic10_number(device.prefab_hash(), query.prefab_hash) {
+        return Ok(());
+    }
+    device.store_slot_logic(query.slot, query.field, query.value)?;
+    writes.push(WorldAccessTarget::DeviceSlotLogic {
+        reference_id,
+        slot: query.slot,
         field: query.field.to_owned(),
     });
     Ok(())

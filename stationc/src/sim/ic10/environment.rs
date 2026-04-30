@@ -134,6 +134,21 @@ impl BatchMode {
     }
 }
 
+/// Request for a batch slot logic read.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BatchSlotLoadRequest<'a> {
+    /// Device prefab hash to match.
+    pub prefab_hash: f64,
+    /// Optional device name hash to match.
+    pub name_hash: Option<f64>,
+    /// Slot index to read from each matching device.
+    pub slot: usize,
+    /// Slot logic field to read.
+    pub field: &'a str,
+    /// Aggregation mode for matching slot values.
+    pub mode: BatchMode,
+}
+
 /// Kind of operation requested from an IC10 environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvironmentOperation {
@@ -141,8 +156,12 @@ pub enum EnvironmentOperation {
     LoadLogic,
     /// Read and aggregate logic fields from matching devices.
     BatchLoadLogic,
+    /// Read and aggregate slot logic fields from matching devices.
+    BatchLoadSlotLogic,
     /// Write a logic field on matching devices.
     BatchStoreLogic,
+    /// Write a slot logic field on matching devices.
+    BatchStoreSlotLogic,
     /// Write a device logic field.
     StoreLogic,
     /// Read a device slot logic field.
@@ -162,7 +181,9 @@ impl fmt::Display for EnvironmentOperation {
         match self {
             Self::LoadLogic => formatter.write_str("load logic"),
             Self::BatchLoadLogic => formatter.write_str("batch load logic"),
+            Self::BatchLoadSlotLogic => formatter.write_str("batch load slot logic"),
             Self::BatchStoreLogic => formatter.write_str("batch store logic"),
+            Self::BatchStoreSlotLogic => formatter.write_str("batch store slot logic"),
             Self::StoreLogic => formatter.write_str("store logic"),
             Self::LoadSlotLogic => formatter.write_str("load slot logic"),
             Self::StoreSlotLogic => formatter.write_str("store slot logic"),
@@ -259,6 +280,16 @@ pub trait Ic10Environment {
         mode: BatchMode,
     ) -> Result<f64, EnvironmentFault>;
 
+    /// Reads and aggregates an indexed slot logic field from all matching world devices.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EnvironmentFault`] if the host cannot complete the batch read.
+    fn batch_load_slot_logic(
+        &mut self,
+        request: BatchSlotLoadRequest<'_>,
+    ) -> Result<f64, EnvironmentFault>;
+
     /// Writes a logic field on all matching world devices.
     ///
     /// # Errors
@@ -268,6 +299,19 @@ pub trait Ic10Environment {
         &mut self,
         prefab_hash: f64,
         name_hash: Option<f64>,
+        field: &str,
+        value: f64,
+    ) -> Result<(), EnvironmentFault>;
+
+    /// Writes an indexed slot logic field on all matching world devices.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EnvironmentFault`] if the host cannot complete the batch write.
+    fn batch_store_slot_logic(
+        &mut self,
+        prefab_hash: f64,
+        slot: usize,
         field: &str,
         value: f64,
     ) -> Result<(), EnvironmentFault>;
@@ -377,6 +421,15 @@ impl Ic10Environment for NoEnvironment {
         })
     }
 
+    fn batch_load_slot_logic(
+        &mut self,
+        _request: BatchSlotLoadRequest<'_>,
+    ) -> Result<f64, EnvironmentFault> {
+        Err(EnvironmentFault::WorldContextRequired {
+            operation: EnvironmentOperation::BatchLoadSlotLogic,
+        })
+    }
+
     fn batch_store_logic(
         &mut self,
         _prefab_hash: f64,
@@ -386,6 +439,18 @@ impl Ic10Environment for NoEnvironment {
     ) -> Result<(), EnvironmentFault> {
         Err(EnvironmentFault::WorldContextRequired {
             operation: EnvironmentOperation::BatchStoreLogic,
+        })
+    }
+
+    fn batch_store_slot_logic(
+        &mut self,
+        _prefab_hash: f64,
+        _slot: usize,
+        _field: &str,
+        _value: f64,
+    ) -> Result<(), EnvironmentFault> {
+        Err(EnvironmentFault::WorldContextRequired {
+            operation: EnvironmentOperation::BatchStoreSlotLogic,
         })
     }
 
