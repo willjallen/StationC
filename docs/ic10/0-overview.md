@@ -83,7 +83,7 @@ These pages use the following operand conventions:
 | --- | --- |
 | `r?` | Any internal register such as `r0`, `r1`, or `r15`. |
 | `d?` | Any device register such as `d0`, `d1`, `d5`, or `db`. |
-| `a(r?|num)` | Operand `a` may be a register or a numeric value. |
+| `a(r?\|num)` | Operand `a` may be a register or a numeric value. |
 | `int` | An integer line number, label, or relative line count depending on instruction. |
 | `logicType` | A device logic variable such as `Temperature`, `On`, or `ReferenceId`. |
 | `logicSlotType` | A slot logic variable such as `Occupied`, `Charge`, or `Mature`. |

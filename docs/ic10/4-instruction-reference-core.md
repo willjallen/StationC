@@ -8,10 +8,10 @@ are in [`5-instruction-reference-conditions.md`](5-instruction-reference-conditi
 
 | Instruction | Description |
 | --- | --- |
-| `alias str r?|d?` | Labels a register or device reference with a name. Device aliases also affect IC base screw labels. |
+| `alias str r?\|d?` | Labels a register or device reference with a name. Device aliases also affect IC base screw labels. |
 | `define str num` | Creates a constant name that is replaced with the provided numeric value. |
 | `hcf` | Halt and catch fire. |
-| `sleep a(r?|num)` | Pauses execution on the IC for `a` seconds. |
+| `sleep a(r?\|num)` | Pauses execution on the IC for `a` seconds. |
 | `yield` | Pauses execution for one tick. |
 
 Examples:
@@ -28,25 +28,25 @@ move r0 ultimateAnswer
 
 | Instruction | Description |
 | --- | --- |
-| `abs r? a(r?|num)` | Store the absolute value of `a`. |
-| `add r? a(r?|num) b(r?|num)` | Store `a + b`. |
-| `ceil r? a(r?|num)` | Store the smallest integer greater than `a`. |
-| `div r? a(r?|num) b(r?|num)` | Store `a / b`. |
-| `pow r? a(r?|num) b(r?|num)` | Store `a` raised to `b`, following IEEE-754 floating-point behavior. |
-| `exp r? a(r?|num)` | Store `e^a`. |
-| `floor r? a(r?|num)` | Store the largest integer less than `a`. |
-| `log r? a(r?|num)` | Store the natural logarithm of `a`. |
-| `max r? a(r?|num) b(r?|num)` | Store the larger of `a` and `b`. |
-| `min r? a(r?|num) b(r?|num)` | Store the smaller of `a` and `b`. |
-| `mod r? a(r?|num) b(r?|num)` | Store `a mod b`. This is not the same as C-style `%`. |
-| `move r? a(r?|num)` | Store a number or register value into a register. |
-| `mul r? a(r?|num) b(r?|num)` | Store `a * b`. |
+| `abs r? a(r?\|num)` | Store the absolute value of `a`. |
+| `add r? a(r?\|num) b(r?\|num)` | Store `a + b`. |
+| `ceil r? a(r?\|num)` | Store the smallest integer greater than `a`. |
+| `div r? a(r?\|num) b(r?\|num)` | Store `a / b`. |
+| `pow r? a(r?\|num) b(r?\|num)` | Store `a` raised to `b`, following IEEE-754 floating-point behavior. |
+| `exp r? a(r?\|num)` | Store `e^a`. |
+| `floor r? a(r?\|num)` | Store the largest integer less than `a`. |
+| `log r? a(r?\|num)` | Store the natural logarithm of `a`. |
+| `max r? a(r?\|num) b(r?\|num)` | Store the larger of `a` and `b`. |
+| `min r? a(r?\|num) b(r?\|num)` | Store the smaller of `a` and `b`. |
+| `mod r? a(r?\|num) b(r?\|num)` | Store `a mod b`. This is not the same as C-style `%`. |
+| `move r? a(r?\|num)` | Store a number or register value into a register. |
+| `mul r? a(r?\|num) b(r?\|num)` | Store `a * b`. |
 | `rand r?` | Store a random value `x` where `0 <= x < 1`. |
-| `round r? a(r?|num)` | Store `a` rounded to the nearest integer. |
-| `sqrt r? a(r?|num)` | Store the square root of `a`. |
-| `sub r? a(r?|num) b(r?|num)` | Store `a - b`. |
-| `trunc r? a(r?|num)` | Store `a` with its fractional part removed. |
-| `lerp r? a(r?|num) b(r?|num) c(r?|num)` | Linearly interpolate from `a` to `b` by ratio `c`, clamped to `0..1`. |
+| `round r? a(r?\|num)` | Store `a` rounded to the nearest integer. |
+| `sqrt r? a(r?\|num)` | Store the square root of `a`. |
+| `sub r? a(r?\|num) b(r?\|num)` | Store `a - b`. |
+| `trunc r? a(r?\|num)` | Store `a` with its fractional part removed. |
+| `lerp r? a(r?\|num) b(r?\|num) c(r?\|num)` | Linearly interpolate from `a` to `b` by ratio `c`, clamped to `0..1`. |
 
 Examples:
 
@@ -83,39 +83,39 @@ All angles are in radians.
 
 | Instruction | Description |
 | --- | --- |
-| `acos r? a(r?|num)` | Store the angle whose cosine is `a`. |
-| `asin r? a(r?|num)` | Store the angle whose sine is `a`. |
-| `atan r? a(r?|num)` | Store the angle whose tangent is `a`. |
-| `atan2 r? a(r?|num) b(r?|num)` | Store the angle whose tangent is `a / b`, where `a` is y and `b` is x. |
-| `cos r? a(r?|num)` | Store the cosine of angle `a`. |
-| `sin r? a(r?|num)` | Store the sine of angle `a`. |
-| `tan r? a(r?|num)` | Store the tangent of angle `a`. |
+| `acos r? a(r?\|num)` | Store the angle whose cosine is `a`. |
+| `asin r? a(r?\|num)` | Store the angle whose sine is `a`. |
+| `atan r? a(r?\|num)` | Store the angle whose tangent is `a`. |
+| `atan2 r? a(r?\|num) b(r?\|num)` | Store the angle whose tangent is `a / b`, where `a` is y and `b` is x. |
+| `cos r? a(r?\|num)` | Store the cosine of angle `a`. |
+| `sin r? a(r?\|num)` | Store the sine of angle `a`. |
+| `tan r? a(r?\|num)` | Store the tangent of angle `a`. |
 
 ## Stack
 
 | Instruction | Description |
 | --- | --- |
 | `clr d?` | Clear stack memory for the provided device. |
-| `clrd id(r?|num)` | Clear stack memory for the device with the provided `ReferenceId`. |
-| `get r? device(d?|r?|id) address(r?|num)` | Read stack memory at `address` from the provided device into a register. |
-| `getd r? id(r?|id) address(r?|num)` | Read stack memory at `address` from the device with the provided `ReferenceId`. |
+| `clrd id(r?\|num)` | Clear stack memory for the device with the provided `ReferenceId`. |
+| `get r? device(d?\|r?\|id) address(r?\|num)` | Read stack memory at `address` from the provided device into a register. |
+| `getd r? id(r?\|id) address(r?\|num)` | Read stack memory at `address` from the device with the provided `ReferenceId`. |
 | `peek r?` | Store the value at the top of the current IC stack without decrementing `sp`. |
-| `poke address(r?|num) value(r?|num)` | Store `value` at `address` in the current IC stack. |
+| `poke address(r?\|num) value(r?\|num)` | Store `value` at `address` in the current IC stack. |
 | `pop r?` | Store the top stack value into a register and decrement `sp`. |
-| `push a(r?|num)` | Push `a` to the current IC stack at `sp` and increment `sp`. |
-| `put device(d?|r?|id) address(r?|num) value(r?|num)` | Write `value` to stack memory at `address` on the provided device. |
-| `putd id(r?|id) address(r?|num) value(r?|num)` | Write `value` to stack memory at `address` on the device with the provided `ReferenceId`. |
+| `push a(r?\|num)` | Push `a` to the current IC stack at `sp` and increment `sp`. |
+| `put device(d?\|r?\|id) address(r?\|num) value(r?\|num)` | Write `value` to stack memory at `address` on the provided device. |
+| `putd id(r?\|id) address(r?\|num) value(r?\|num)` | Write `value` to stack memory at `address` on the device with the provided `ReferenceId`. |
 
 ## Slot / Logic
 
 | Instruction | Description |
 | --- | --- |
-| `l r? device(d?|r?|id) logicType` | Load a device logic value into a register. |
-| `lr r? device(d?|r?|id) reagentMode int` | Load a reagent value for `Contents` (`0`), `Required` (`1`), or `Recipe` (`2`). |
-| `ls r? device(d?|r?|id) slotIndex logicSlotType` | Load a slot logic value into a register. |
-| `s device(d?|r?|id) logicType r?` | Store a register value to a device logic value. |
-| `ss device(d?|r?|id) slotIndex logicSlotType r?` | Store a register value to a slot logic value. |
-| `rmap r? d? reagentHash(r?|num)` | Map a reagent hash to the prefab hash expected by the device. |
+| `l r? device(d?\|r?\|id) logicType` | Load a device logic value into a register. |
+| `lr r? device(d?\|r?\|id) reagentMode int` | Load a reagent value for `Contents` (`0`), `Required` (`1`), or `Recipe` (`2`). |
+| `ls r? device(d?\|r?\|id) slotIndex logicSlotType` | Load a slot logic value into a register. |
+| `s device(d?\|r?\|id) logicType r?` | Store a register value to a device logic value. |
+| `ss device(d?\|r?\|id) slotIndex logicSlotType r?` | Store a register value to a slot logic value. |
+| `rmap r? d? reagentHash(r?\|num)` | Map a reagent hash to the prefab hash expected by the device. |
 
 Examples:
 

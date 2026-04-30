@@ -39,17 +39,17 @@ move r0 %0000_1111
 
 | Instruction | Description |
 | --- | --- |
-| `and r? a(r?|num) b(r?|num)` | Bitwise AND. Each result bit is `1` only if both input bits are `1`. |
-| `nor r? a(r?|num) b(r?|num)` | Bitwise NOR. Each result bit is `1` only if both input bits are `0`. |
-| `not r? a(r?|num)` | Bitwise NOT. Flips every bit. `not 1` is `-2`, not logical false. |
-| `or r? a(r?|num) b(r?|num)` | Bitwise OR. Each result bit is `1` if either input bit is `1`. |
-| `sla r? a(r?|num) b(r?|num)` | Arithmetic left shift. This is indistinguishable from `sll`. |
-| `sll r? a(r?|num) b(r?|num)` | Logical left shift, filling rightmost bits with zero. |
-| `sra r? a(r?|num) b(r?|num)` | Arithmetic right shift, filling leftmost bits with the sign bit. |
-| `srl r? a(r?|num) b(r?|num)` | Logical right shift, filling leftmost bits with zero. |
-| `xor r? a(r?|num) b(r?|num)` | Bitwise XOR. Each result bit is `1` when the input bits differ. |
-| `ext r? source(r?|num) offset(r?|num) length(r?|num)` | Extract a bit field from `source` beginning at `offset` for `length` bits. Payload cannot exceed 53 bits. |
-| `ins r? field(r?|num) offset(r?|num) length(r?|num)` | Insert a bit field into the destination register beginning at `offset` for `length` bits. Payload cannot exceed 53 bits. |
+| `and r? a(r?\|num) b(r?\|num)` | Bitwise AND. Each result bit is `1` only if both input bits are `1`. |
+| `nor r? a(r?\|num) b(r?\|num)` | Bitwise NOR. Each result bit is `1` only if both input bits are `0`. |
+| `not r? a(r?\|num)` | Bitwise NOT. Flips every bit. `not 1` is `-2`, not logical false. |
+| `or r? a(r?\|num) b(r?\|num)` | Bitwise OR. Each result bit is `1` if either input bit is `1`. |
+| `sla r? a(r?\|num) b(r?\|num)` | Arithmetic left shift. This is indistinguishable from `sll`. |
+| `sll r? a(r?\|num) b(r?\|num)` | Logical left shift, filling rightmost bits with zero. |
+| `sra r? a(r?\|num) b(r?\|num)` | Arithmetic right shift, filling leftmost bits with the sign bit. |
+| `srl r? a(r?\|num) b(r?\|num)` | Logical right shift, filling leftmost bits with zero. |
+| `xor r? a(r?\|num) b(r?\|num)` | Bitwise XOR. Each result bit is `1` when the input bits differ. |
+| `ext r? source(r?\|num) offset(r?\|num) length(r?\|num)` | Extract a bit field from `source` beginning at `offset` for `length` bits. Payload cannot exceed 53 bits. |
+| `ins r? field(r?\|num) offset(r?\|num) length(r?\|num)` | Insert a bit field into the destination register beginning at `offset` for `length` bits. Payload cannot exceed 53 bits. |
 
 `ins` example:
 
@@ -90,7 +90,7 @@ binary values treat `>= 1` as `1` and `< 1` as `0`.
 
 | Instruction | Description |
 | --- | --- |
-| `select r? a(r?|num) b(r?|num) c(r?|num)` | Store `b` if `a` is non-zero, otherwise store `c`. |
+| `select r? a(r?\|num) b(r?\|num) c(r?\|num)` | Store `b` if `a` is non-zero, otherwise store `c`. |
 
 `select` is a ternary-like operation:
 
@@ -106,8 +106,8 @@ select r1 r0 10 200 # r1 = 10
 
 | Instruction | Description |
 | --- | --- |
-| `sdns r? device(d?|r?|id)` | Store `1` if the device is not set, otherwise `0`. |
-| `sdse r? device(d?|r?|id)` | Store `1` if the device is set, otherwise `0`. |
+| `sdns r? device(d?\|r?\|id)` | Store `1` if the device is not set, otherwise `0`. |
+| `sdse r? device(d?\|r?\|id)` | Store `1` if the device is set, otherwise `0`. |
 
 ## Value Comparisons
 
@@ -115,24 +115,24 @@ Comparison instructions store `1` when the condition is true and `0` otherwise.
 
 | Instruction | Condition |
 | --- | --- |
-| `sap r? a(r?|num) b(r?|num) c(r?|num)` | `1` if `abs(a - b) <= max(c * max(abs(a), abs(b)), float.epsilon * 8)`, otherwise `0`. |
-| `sapz r? a(r?|num) b(r?|num)` | `1` if `abs(a) <= max(b * abs(a), float.epsilon * 8)`, otherwise `0`. |
-| `seq r? a(r?|num) b(r?|num)` | `a == b`. |
-| `seqz r? a(r?|num)` | `a == 0`. |
-| `sge r? a(r?|num) b(r?|num)` | `a >= b`. |
-| `sgez r? a(r?|num)` | `a >= 0`. |
-| `sgt r? a(r?|num) b(r?|num)` | `a > b`. |
-| `sgtz r? a(r?|num)` | `a > 0`. |
-| `sle r? a(r?|num) b(r?|num)` | `a <= b`. |
-| `slez r? a(r?|num)` | `a <= 0`. |
-| `slt r? a(r?|num) b(r?|num)` | `a < b`. |
-| `sltz r? a(r?|num)` | `a < 0`. |
-| `sna r? a(r?|num) b(r?|num) c(r?|num)` | `1` if `abs(a - b) > max(c * max(abs(a), abs(b)), float.epsilon * 8)`, otherwise `0`. |
-| `snan r? a(r?|num)` | `a` is `NaN`. |
-| `snanz r? a(r?|num)` | `a` is not `NaN`. |
-| `snaz r? a(r?|num) b(r?|num)` | `1` if `abs(a) > max(b * abs(a), float.epsilon)`, otherwise `0`. |
-| `sne r? a(r?|num) b(r?|num)` | `a != b`. |
-| `snez r? a(r?|num)` | `a != 0`. |
+| `sap r? a(r?\|num) b(r?\|num) c(r?\|num)` | `1` if `abs(a - b) <= max(c * max(abs(a), abs(b)), float.epsilon * 8)`, otherwise `0`. |
+| `sapz r? a(r?\|num) b(r?\|num)` | `1` if `abs(a) <= max(b * abs(a), float.epsilon * 8)`, otherwise `0`. |
+| `seq r? a(r?\|num) b(r?\|num)` | `a == b`. |
+| `seqz r? a(r?\|num)` | `a == 0`. |
+| `sge r? a(r?\|num) b(r?\|num)` | `a >= b`. |
+| `sgez r? a(r?\|num)` | `a >= 0`. |
+| `sgt r? a(r?\|num) b(r?\|num)` | `a > b`. |
+| `sgtz r? a(r?\|num)` | `a > 0`. |
+| `sle r? a(r?\|num) b(r?\|num)` | `a <= b`. |
+| `slez r? a(r?\|num)` | `a <= 0`. |
+| `slt r? a(r?\|num) b(r?\|num)` | `a < b`. |
+| `sltz r? a(r?\|num)` | `a < 0`. |
+| `sna r? a(r?\|num) b(r?\|num) c(r?\|num)` | `1` if `abs(a - b) > max(c * max(abs(a), abs(b)), float.epsilon * 8)`, otherwise `0`. |
+| `snan r? a(r?\|num)` | `a` is `NaN`. |
+| `snanz r? a(r?\|num)` | `a` is not `NaN`. |
+| `snaz r? a(r?\|num) b(r?\|num)` | `1` if `abs(a) > max(b * abs(a), float.epsilon)`, otherwise `0`. |
+| `sne r? a(r?\|num) b(r?\|num)` | `a != b`. |
+| `snez r? a(r?\|num)` | `a != 0`. |
 
 The `ap`/`na` approximate comparison pair uses this formula:
 
@@ -175,14 +175,14 @@ j ra
 
 | Instruction | Description |
 | --- | --- |
-| `bdnvl device(d?|r?|id) logicType a(r?|num)` | Branch to `a` if the device is not valid for loading the logic type. |
-| `bdnvs device(d?|r?|id) logicType a(r?|num)` | Branch to `a` if the device is not valid for storing the logic type. |
-| `bdns d? a(r?|num)` | Branch to `a` if device `d` is not set. |
-| `bdnsal d? a(r?|num)` | Branch to `a` if device `d` is not set and store next line in `ra`. |
-| `bdse d? a(r?|num)` | Branch to `a` if device `d` is set. |
-| `bdseal d? a(r?|num)` | Branch to `a` if device `d` is set and store next line in `ra`. |
-| `brdns d? a(r?|num)` | Relative branch to `a` if device `d` is not set. |
-| `brdse d? a(r?|num)` | Relative branch to `a` if device `d` is set. |
+| `bdnvl device(d?\|r?\|id) logicType a(r?\|num)` | Branch to `a` if the device is not valid for loading the logic type. |
+| `bdnvs device(d?\|r?\|id) logicType a(r?\|num)` | Branch to `a` if the device is not valid for storing the logic type. |
+| `bdns d? a(r?\|num)` | Branch to `a` if device `d` is not set. |
+| `bdnsal d? a(r?\|num)` | Branch to `a` if device `d` is not set and store next line in `ra`. |
+| `bdse d? a(r?\|num)` | Branch to `a` if device `d` is set. |
+| `bdseal d? a(r?\|num)` | Branch to `a` if device `d` is set and store next line in `ra`. |
+| `brdns d? a(r?\|num)` | Relative branch to `a` if device `d` is not set. |
+| `brdse d? a(r?\|num)` | Relative branch to `a` if device `d` is set. |
 
 Example:
 
@@ -195,56 +195,56 @@ bdseal d0 HarvestCrop
 
 | Instruction | Description |
 | --- | --- |
-| `bap a(r?|num) b(r?|num) c(r?|num) d(r?|num)` | Branch to `d` if `a` approximately equals `b` using tolerance `c`. |
-| `brap a(r?|num) b(r?|num) c(r?|num) d(r?|num)` | Relative branch to `d` if `a` approximately equals `b` using tolerance `c`. |
-| `bapal a(r?|num) b(r?|num) c(r?|num) d(r?|num)` | Branch and link for approximate equality. |
-| `bapz a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a` approximately equals zero using tolerance `b`. |
-| `brapz a(r?|num) b(r?|num) c(r?|num)` | Relative branch to `c` if `a` approximately equals zero using tolerance `b`. |
-| `bapzal a(r?|num) b(r?|num) c(r?|num)` | Branch and link if `a` approximately equals zero using tolerance `b`. |
-| `beq a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a == b`. |
-| `breq a(r?|num) b(r?|num) c(r?|num)` | Relative branch to `c` if `a == b`. |
-| `beqal a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a == b` and store next line in `ra`. |
-| `beqz a(r?|num) b(r?|num)` | Branch to `b` if `a == 0`. |
-| `breqz a(r?|num) b(r?|num)` | Relative branch to `b` if `a == 0`. |
-| `beqzal a(r?|num) b(r?|num)` | Branch to `b` if `a == 0` and store next line in `ra`. |
-| `bge a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a >= b`. |
-| `brge a(r?|num) b(r?|num) c(r?|num)` | Relative branch to `c` if `a >= b`. |
-| `bgeal a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a >= b` and store next line in `ra`. |
-| `bgez a(r?|num) b(r?|num)` | Branch to `b` if `a >= 0`. |
-| `brgez a(r?|num) b(r?|num)` | Relative branch to `b` if `a >= 0`. |
-| `bgezal a(r?|num) b(r?|num)` | Branch to `b` if `a >= 0` and store next line in `ra`. |
-| `bgt a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a > b`. |
-| `brgt a(r?|num) b(r?|num) c(r?|num)` | Relative branch to `c` if `a > b`. |
-| `bgtal a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a > b` and store next line in `ra`. |
-| `bgtz a(r?|num) b(r?|num)` | Branch to `b` if `a > 0`. |
-| `brgtz a(r?|num) b(r?|num)` | Relative branch to `b` if `a > 0`. |
-| `bgtzal a(r?|num) b(r?|num)` | Branch to `b` if `a > 0` and store next line in `ra`. |
-| `ble a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a <= b`. |
-| `brle a(r?|num) b(r?|num) c(r?|num)` | Relative branch to `c` if `a <= b`. |
-| `bleal a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a <= b` and store next line in `ra`. |
-| `blez a(r?|num) b(r?|num)` | Branch to `b` if `a <= 0`. |
-| `brlez a(r?|num) b(r?|num)` | Relative branch to `b` if `a <= 0`. |
-| `blezal a(r?|num) b(r?|num)` | Branch to `b` if `a <= 0` and store next line in `ra`. |
-| `blt a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a < b`. |
-| `brlt a(r?|num) b(r?|num) c(r?|num)` | Relative branch to `c` if `a < b`. |
-| `bltal a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a < b` and store next line in `ra`. |
-| `bltz a(r?|num) b(r?|num)` | Branch to `b` if `a < 0`. |
-| `brltz a(r?|num) b(r?|num)` | Relative branch to `b` if `a < 0`. |
-| `bltzal a(r?|num) b(r?|num)` | Branch to `b` if `a < 0` and store next line in `ra`. |
-| `bna a(r?|num) b(r?|num) c(r?|num) d(r?|num)` | Branch to `d` if `a` is not approximately equal to `b` using tolerance `c`. |
-| `brna a(r?|num) b(r?|num) c(r?|num) d(r?|num)` | Relative branch to `d` if `a` is not approximately equal to `b` using tolerance `c`. |
-| `bnaal a(r?|num) b(r?|num) c(r?|num) d(r?|num)` | Branch and link for not-approximately-equal. |
-| `bnan a(r?|num) b(r?|num)` | Branch to `b` if `a` is `NaN`. |
-| `brnan a(r?|num) b(r?|num)` | Relative branch to `b` if `a` is `NaN`. |
-| `bnaz a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a` is not approximately zero using tolerance `b`. |
-| `brnaz a(r?|num) b(r?|num) c(r?|num)` | Relative branch to `c` if `a` is not approximately zero using tolerance `b`. |
-| `bnazal a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a` is not approximately zero and store next line in `ra`. |
-| `bne a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a != b`. |
-| `brne a(r?|num) b(r?|num) c(r?|num)` | Relative branch to `c` if `a != b`. |
-| `bneal a(r?|num) b(r?|num) c(r?|num)` | Branch to `c` if `a != b` and store next line in `ra`. |
-| `bnez a(r?|num) b(r?|num)` | Branch to `b` if `a != 0`. |
-| `brnez a(r?|num) b(r?|num)` | Relative branch to `b` if `a != 0`. |
-| `bnezal a(r?|num) b(r?|num)` | Branch to `b` if `a != 0` and store next line in `ra`. |
+| `bap a(r?\|num) b(r?\|num) c(r?\|num) d(r?\|num)` | Branch to `d` if `a` approximately equals `b` using tolerance `c`. |
+| `brap a(r?\|num) b(r?\|num) c(r?\|num) d(r?\|num)` | Relative branch to `d` if `a` approximately equals `b` using tolerance `c`. |
+| `bapal a(r?\|num) b(r?\|num) c(r?\|num) d(r?\|num)` | Branch and link for approximate equality. |
+| `bapz a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a` approximately equals zero using tolerance `b`. |
+| `brapz a(r?\|num) b(r?\|num) c(r?\|num)` | Relative branch to `c` if `a` approximately equals zero using tolerance `b`. |
+| `bapzal a(r?\|num) b(r?\|num) c(r?\|num)` | Branch and link if `a` approximately equals zero using tolerance `b`. |
+| `beq a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a == b`. |
+| `breq a(r?\|num) b(r?\|num) c(r?\|num)` | Relative branch to `c` if `a == b`. |
+| `beqal a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a == b` and store next line in `ra`. |
+| `beqz a(r?\|num) b(r?\|num)` | Branch to `b` if `a == 0`. |
+| `breqz a(r?\|num) b(r?\|num)` | Relative branch to `b` if `a == 0`. |
+| `beqzal a(r?\|num) b(r?\|num)` | Branch to `b` if `a == 0` and store next line in `ra`. |
+| `bge a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a >= b`. |
+| `brge a(r?\|num) b(r?\|num) c(r?\|num)` | Relative branch to `c` if `a >= b`. |
+| `bgeal a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a >= b` and store next line in `ra`. |
+| `bgez a(r?\|num) b(r?\|num)` | Branch to `b` if `a >= 0`. |
+| `brgez a(r?\|num) b(r?\|num)` | Relative branch to `b` if `a >= 0`. |
+| `bgezal a(r?\|num) b(r?\|num)` | Branch to `b` if `a >= 0` and store next line in `ra`. |
+| `bgt a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a > b`. |
+| `brgt a(r?\|num) b(r?\|num) c(r?\|num)` | Relative branch to `c` if `a > b`. |
+| `bgtal a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a > b` and store next line in `ra`. |
+| `bgtz a(r?\|num) b(r?\|num)` | Branch to `b` if `a > 0`. |
+| `brgtz a(r?\|num) b(r?\|num)` | Relative branch to `b` if `a > 0`. |
+| `bgtzal a(r?\|num) b(r?\|num)` | Branch to `b` if `a > 0` and store next line in `ra`. |
+| `ble a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a <= b`. |
+| `brle a(r?\|num) b(r?\|num) c(r?\|num)` | Relative branch to `c` if `a <= b`. |
+| `bleal a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a <= b` and store next line in `ra`. |
+| `blez a(r?\|num) b(r?\|num)` | Branch to `b` if `a <= 0`. |
+| `brlez a(r?\|num) b(r?\|num)` | Relative branch to `b` if `a <= 0`. |
+| `blezal a(r?\|num) b(r?\|num)` | Branch to `b` if `a <= 0` and store next line in `ra`. |
+| `blt a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a < b`. |
+| `brlt a(r?\|num) b(r?\|num) c(r?\|num)` | Relative branch to `c` if `a < b`. |
+| `bltal a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a < b` and store next line in `ra`. |
+| `bltz a(r?\|num) b(r?\|num)` | Branch to `b` if `a < 0`. |
+| `brltz a(r?\|num) b(r?\|num)` | Relative branch to `b` if `a < 0`. |
+| `bltzal a(r?\|num) b(r?\|num)` | Branch to `b` if `a < 0` and store next line in `ra`. |
+| `bna a(r?\|num) b(r?\|num) c(r?\|num) d(r?\|num)` | Branch to `d` if `a` is not approximately equal to `b` using tolerance `c`. |
+| `brna a(r?\|num) b(r?\|num) c(r?\|num) d(r?\|num)` | Relative branch to `d` if `a` is not approximately equal to `b` using tolerance `c`. |
+| `bnaal a(r?\|num) b(r?\|num) c(r?\|num) d(r?\|num)` | Branch and link for not-approximately-equal. |
+| `bnan a(r?\|num) b(r?\|num)` | Branch to `b` if `a` is `NaN`. |
+| `brnan a(r?\|num) b(r?\|num)` | Relative branch to `b` if `a` is `NaN`. |
+| `bnaz a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a` is not approximately zero using tolerance `b`. |
+| `brnaz a(r?\|num) b(r?\|num) c(r?\|num)` | Relative branch to `c` if `a` is not approximately zero using tolerance `b`. |
+| `bnazal a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a` is not approximately zero and store next line in `ra`. |
+| `bne a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a != b`. |
+| `brne a(r?\|num) b(r?\|num) c(r?\|num)` | Relative branch to `c` if `a != b`. |
+| `bneal a(r?\|num) b(r?\|num) c(r?\|num)` | Branch to `c` if `a != b` and store next line in `ra`. |
+| `bnez a(r?\|num) b(r?\|num)` | Branch to `b` if `a != 0`. |
+| `brnez a(r?\|num) b(r?\|num)` | Relative branch to `b` if `a != 0`. |
+| `bnezal a(r?\|num) b(r?\|num)` | Branch to `b` if `a != 0` and store next line in `ra`. |
 
 Branch targets can be line numbers or labels for absolute branches, and line
 offsets for relative branches.
