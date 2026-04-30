@@ -305,6 +305,19 @@ impl Ic10Environment for WorldIc10Context<'_> {
         Ok(())
     }
 
+    fn clear_stack(&mut self, target: DeviceTarget) -> Result<(), EnvironmentFault> {
+        let reference_id = self.reference_id_for_target(target)?;
+        {
+            let device = self.resolve_reference_mut(reference_id)?;
+            device.clear_stack();
+        }
+        self.record_access(
+            WorldAccessOperation::Write,
+            WorldAccessTarget::DeviceStackAll { reference_id },
+        );
+        Ok(())
+    }
+
     fn get_stack(&mut self, target: DeviceTarget, address: usize) -> Result<f64, EnvironmentFault> {
         let reference_id = self.reference_id_for_target(target)?;
         let value = {

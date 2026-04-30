@@ -143,6 +143,8 @@ pub enum EnvironmentOperation {
     BatchLoadLogic,
     /// Write a device logic field.
     StoreLogic,
+    /// Clear device stack memory.
+    ClearStack,
     /// Read device stack memory.
     GetStack,
     /// Write device stack memory.
@@ -155,6 +157,7 @@ impl fmt::Display for EnvironmentOperation {
             Self::LoadLogic => formatter.write_str("load logic"),
             Self::BatchLoadLogic => formatter.write_str("batch load logic"),
             Self::StoreLogic => formatter.write_str("store logic"),
+            Self::ClearStack => formatter.write_str("clear stack"),
             Self::GetStack => formatter.write_str("get stack"),
             Self::PutStack => formatter.write_str("put stack"),
         }
@@ -253,6 +256,13 @@ pub trait Ic10Environment {
         value: f64,
     ) -> Result<(), EnvironmentFault>;
 
+    /// Clears stack memory on a device target.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EnvironmentFault`] if the target cannot be written.
+    fn clear_stack(&mut self, target: DeviceTarget) -> Result<(), EnvironmentFault>;
+
     /// Reads a value from device stack memory.
     ///
     /// # Errors
@@ -310,6 +320,12 @@ impl Ic10Environment for NoEnvironment {
     ) -> Result<(), EnvironmentFault> {
         Err(EnvironmentFault::WorldContextRequired {
             operation: EnvironmentOperation::StoreLogic,
+        })
+    }
+
+    fn clear_stack(&mut self, _target: DeviceTarget) -> Result<(), EnvironmentFault> {
+        Err(EnvironmentFault::WorldContextRequired {
+            operation: EnvironmentOperation::ClearStack,
         })
     }
 

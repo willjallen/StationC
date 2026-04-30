@@ -35,6 +35,21 @@ pub(super) fn assert_device_logic(
     assert_number(actual, expected, field)
 }
 
+pub(super) fn assert_device_stack(
+    world: &World,
+    reference_id: ReferenceId,
+    address: usize,
+    expected: f64,
+) -> TestResult {
+    let device = world
+        .device(reference_id)
+        .ok_or_else(|| test_error(format!("missing device {}", reference_id.value())))?;
+    let actual = device
+        .stack_value(address)
+        .ok_or_else(|| test_error(format!("missing device stack[{address}]")))?;
+    assert_number(actual, expected, &format!("stack[{address}]"))
+}
+
 pub(super) fn assert_housing_logic(housing: &IcHousing, field: &str, expected: f64) -> TestResult {
     let actual = housing.device().logic(field).ok_or_else(|| {
         test_error(format!(

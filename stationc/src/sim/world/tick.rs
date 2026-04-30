@@ -57,6 +57,11 @@ pub enum WorldAccessTarget {
         /// Stack address.
         address: usize,
     },
+    /// All stack memory on a device or housing body.
+    DeviceStackAll {
+        /// Device or housing body that was accessed.
+        reference_id: ReferenceId,
+    },
 }
 
 /// One successful world-facing IC10 access.

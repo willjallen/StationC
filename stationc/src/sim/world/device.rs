@@ -155,6 +155,10 @@ impl Device {
         *stack_value = value;
         Ok(())
     }
+
+    pub(super) fn clear_stack(&mut self) {
+        self.stack = [0.0; STACK_SIZE];
+    }
 }
 
 impl Default for Device {

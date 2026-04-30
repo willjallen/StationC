@@ -180,6 +180,7 @@ impl Ic10 {
             Instruction::Pop { destination } => self.execute_pop(destination),
             Instruction::Peek { destination } => self.execute_peek(destination),
             Instruction::Poke { address, value } => self.execute_poke(&address, &value),
+            Instruction::ClearStack { device } => self.execute_clear_stack(environment, &device),
             Instruction::LoadLogic {
                 destination,
                 device,
@@ -314,6 +315,16 @@ impl Ic10 {
         let address = self.value(address)?;
         let value = self.value(value)?;
         self.stack.poke(address, value)?;
+        Ok(StepStop::Continue)
+    }
+
+    fn execute_clear_stack<E: Ic10Environment>(
+        &self,
+        environment: &mut E,
+        device: &DeviceOperand,
+    ) -> Result<StepStop, Ic10Fault> {
+        let target = self.device_target(device)?;
+        environment.clear_stack(target)?;
         Ok(StepStop::Continue)
     }
 

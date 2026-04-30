@@ -6,7 +6,8 @@ use stationc::sim::{
 };
 
 use super::support::{
-    TestResult, assert_device_logic, assert_housing_register, assert_number, assert_tick,
+    TestResult, assert_device_logic, assert_device_stack, assert_housing_register,
+    assert_housing_stack, assert_number, assert_tick,
 };
 
 #[test]
@@ -349,6 +350,91 @@ yield
     let error = tick_error(&mut world)?;
 
     assert_ic10_error_code(error, ErrorCode::DeviceStackAddressOutOfRange)
+}
+
+#[test]
+fn clr_clears_device_stack_through_pin() -> TestResult {
+    let mut world = World::new();
+    let mut device = Device::new().with_logic("On", 1.0);
+    assert!(device.set_stack_value(0, 11.0).is_ok());
+    assert!(device.set_stack_value(511, 22.0).is_ok());
+    let device = world.add_device(device);
+    let housing = world.add_ic10_housing(
+        "\
+clr d0
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_device_stack(&world, device, 0, 0.0)?;
+    assert_device_stack(&world, device, 511, 0.0)?;
+    assert_eq!(tick.access.len(), 1);
+    assert_eq!(tick.access[0].operation, WorldAccessOperation::Write);
+    assert_eq!(
+        tick.access[0].target,
+        WorldAccessTarget::DeviceStackAll {
+            reference_id: device
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn clrd_clears_device_stack_by_reference_id() -> TestResult {
+    let mut world = World::new();
+    let mut device = Device::new().with_logic("On", 1.0);
+    assert!(device.set_stack_value(7, 77.0).is_ok());
+    let device = world.add_device(device);
+    world.add_ic10_housing(&format!(
+        "\
+clrd {}
+yield
+",
+        device.value()
+    ))?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_device_stack(&world, device, 7, 0.0)
+}
+
+#[test]
+fn clr_db_clears_current_housing_world_stack() -> TestResult {
+    let mut world = World::new();
+    let housing = world.add_ic10_housing(
+        "\
+put db 3 33
+clr db
+get r0 db 3
+yield
+",
+    )?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 4, StopReason::Yield)?;
+    assert_housing_stack(&world, housing, 3, 0.0)?;
+    assert_housing_register(&world, housing, 0, 0.0)
+}
+
+#[test]
+fn standalone_ic10_requires_world_context_for_stack_clear() -> TestResult {
+    let mut ic10 = Ic10::from_source(
+        "\
+clr db
+yield
+",
+    )?;
+
+    let error = ic10_tick_error(&mut ic10)?;
+
+    assert_eq!(error.code(), ErrorCode::WorldContextRequired);
+    Ok(())
 }
 
 #[test]

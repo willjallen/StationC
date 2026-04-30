@@ -278,7 +278,9 @@ fn parse_instruction(
         "push" | "pop" | "peek" | "poke" => parse_local_stack_instruction(tokens, context),
         "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
         "lb" | "lbn" => parse_batch_logic_instruction(tokens, context),
-        "get" | "put" | "getd" | "putd" => parse_device_stack_instruction(tokens, context),
+        "clr" | "clrd" | "get" | "put" | "getd" | "putd" => {
+            parse_device_stack_instruction(tokens, context)
+        }
         "j" | "jal" | "jr" => parse_jump_instruction(tokens, context),
         mnemonic => parse_math_or_branch_instruction(mnemonic, tokens, context),
     }
@@ -477,10 +479,21 @@ fn parse_device_stack_instruction(
     context: ParseContext<'_>,
 ) -> Result<Instruction, ParseError> {
     match tokens[0] {
+        "clr" | "clrd" => parse_clear_stack_instruction(tokens, context),
         "get" | "getd" => parse_get_stack_instruction(tokens, context),
         "put" | "putd" => parse_put_stack_instruction(tokens, context),
         mnemonic => unsupported_instruction(mnemonic, context.line_number),
     }
+}
+
+fn parse_clear_stack_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 2, context.line_number)?;
+    Ok(Instruction::ClearStack {
+        device: parse_clear_stack_device(tokens[0], tokens[1], context),
+    })
 }
 
 fn parse_get_stack_instruction(
@@ -527,6 +540,18 @@ fn parse_get_or_put_device(
     context: ParseContext<'_>,
 ) -> DeviceOperand {
     if matches!(mnemonic, "getd" | "putd") {
+        DeviceOperand::Reference(parse_value(token, context))
+    } else {
+        parse_device_operand(token, context)
+    }
+}
+
+fn parse_clear_stack_device(
+    mnemonic: &str,
+    token: &str,
+    context: ParseContext<'_>,
+) -> DeviceOperand {
+    if mnemonic == "clrd" {
         DeviceOperand::Reference(parse_value(token, context))
     } else {
         parse_device_operand(token, context)

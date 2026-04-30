@@ -73,6 +73,9 @@ pub(super) enum Instruction {
         address: ValueOperand,
         value: ValueOperand,
     },
+    ClearStack {
+        device: DeviceOperand,
+    },
     LoadLogic {
         destination: RegisterRef,
         device: DeviceOperand,
