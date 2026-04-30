@@ -13,7 +13,86 @@ pub struct Device {
     prefab_hash: f64,
     name_hash: f64,
     logic: HashMap<String, LogicField>,
+    slots: HashMap<usize, DeviceSlot>,
     stack: [f64; STACK_SIZE],
+}
+
+/// Indexed slot state exposed by a world device.
+#[derive(Debug, Clone)]
+pub struct DeviceSlot {
+    logic: HashMap<String, LogicField>,
+}
+
+impl DeviceSlot {
+    /// Creates an empty slot with no writable logic fields.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            logic: HashMap::new(),
+        }
+    }
+
+    /// Adds a writable slot logic field and returns the slot.
+    #[must_use]
+    pub fn with_logic(mut self, field: impl Into<String>, value: f64) -> Self {
+        self.set_logic(field, value);
+        self
+    }
+
+    /// Adds a read-only slot logic field and returns the slot.
+    #[must_use]
+    pub fn with_read_only_logic(mut self, field: impl Into<String>, value: f64) -> Self {
+        self.set_read_only_logic(field, value);
+        self
+    }
+
+    /// Reads a custom logic field stored on this slot.
+    #[must_use]
+    pub fn logic(&self, field: &str) -> Option<f64> {
+        self.logic.get(field).map(|logic| logic.value)
+    }
+
+    /// Sets or creates a writable slot logic field.
+    pub fn set_logic(&mut self, field: impl Into<String>, value: f64) {
+        self.logic.insert(field.into(), LogicField::writable(value));
+    }
+
+    /// Sets or creates a read-only slot logic field.
+    pub fn set_read_only_logic(&mut self, field: impl Into<String>, value: f64) {
+        self.logic
+            .insert(field.into(), LogicField::read_only(value));
+    }
+
+    fn load_logic(&self, field: &str) -> Result<f64, EnvironmentFault> {
+        self.logic
+            .get(field)
+            .map(|logic| logic.value)
+            .ok_or_else(|| EnvironmentFault::UnknownLogicField {
+                field: field.to_owned(),
+            })
+    }
+
+    fn store_logic(&mut self, field: &str, value: f64) -> Result<(), EnvironmentFault> {
+        let logic =
+            self.logic
+                .get_mut(field)
+                .ok_or_else(|| EnvironmentFault::UnknownLogicField {
+                    field: field.to_owned(),
+                })?;
+        if !logic.is_writable() {
+            return Err(EnvironmentFault::ReadOnlyLogicField {
+                field: field.to_owned(),
+            });
+        }
+        logic.value = value;
+        Ok(())
+    }
+}
+
+impl Default for DeviceSlot {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +136,7 @@ impl Device {
             prefab_hash: 0.0,
             name_hash: 0.0,
             logic: HashMap::new(),
+            slots: HashMap::new(),
             stack: [0.0; STACK_SIZE],
         }
     }
@@ -110,6 +190,30 @@ impl Device {
     pub fn set_read_only_logic(&mut self, field: impl Into<String>, value: f64) {
         self.logic
             .insert(field.into(), LogicField::read_only(value));
+    }
+
+    /// Adds a slot at `index` and returns the device.
+    #[must_use]
+    pub fn with_slot(mut self, index: usize, slot: DeviceSlot) -> Self {
+        self.set_slot(index, slot);
+        self
+    }
+
+    /// Returns an indexed slot, if present.
+    #[must_use]
+    pub fn slot(&self, index: usize) -> Option<&DeviceSlot> {
+        self.slots.get(&index)
+    }
+
+    /// Returns a mutable indexed slot, if present.
+    #[must_use]
+    pub fn slot_mut(&mut self, index: usize) -> Option<&mut DeviceSlot> {
+        self.slots.get_mut(&index)
+    }
+
+    /// Sets or replaces an indexed slot.
+    pub fn set_slot(&mut self, index: usize, slot: DeviceSlot) {
+        self.slots.insert(index, slot);
     }
 
     /// Reads a stack value by absolute address.
@@ -202,6 +306,31 @@ impl Device {
             return false;
         }
         self.logic.get(field).is_some_and(LogicField::is_writable)
+    }
+
+    pub(super) fn load_slot_logic(
+        &self,
+        slot: usize,
+        field: &str,
+    ) -> Result<f64, EnvironmentFault> {
+        let slot = self
+            .slots
+            .get(&slot)
+            .ok_or(EnvironmentFault::UnknownSlot { slot })?;
+        slot.load_logic(field)
+    }
+
+    pub(super) fn store_slot_logic(
+        &mut self,
+        slot: usize,
+        field: &str,
+        value: f64,
+    ) -> Result<(), EnvironmentFault> {
+        let slot = self
+            .slots
+            .get_mut(&slot)
+            .ok_or(EnvironmentFault::UnknownSlot { slot })?;
+        slot.store_logic(field, value)
     }
 
     pub(super) fn get_stack(&self, address: usize) -> Result<f64, EnvironmentFault> {

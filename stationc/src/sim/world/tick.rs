@@ -51,6 +51,15 @@ pub enum WorldAccessTarget {
         /// Logic field name.
         field: String,
     },
+    /// A slot logic field on a device or housing body.
+    DeviceSlotLogic {
+        /// Device or housing body that was accessed.
+        reference_id: ReferenceId,
+        /// Slot index that was accessed.
+        slot: usize,
+        /// Slot logic field name.
+        field: String,
+    },
     /// A device or housing stack address.
     DeviceStack {
         /// Device or housing body that was accessed.
@@ -145,7 +154,10 @@ pub(super) fn diagnostics_for_access(access: &[WorldAccessEvent]) -> Vec<WorldDi
         }
 
         if event.operation == WorldAccessOperation::Read
-            && matches!(event.target, WorldAccessTarget::DeviceLogic { .. })
+            && matches!(
+                event.target,
+                WorldAccessTarget::DeviceLogic { .. } | WorldAccessTarget::DeviceSlotLogic { .. }
+            )
         {
             let key = (event.actor, event.target.clone());
             if let Some(previous_index) = previous_read_by_actor_and_target.insert(key, index) {

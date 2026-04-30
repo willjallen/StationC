@@ -1,7 +1,7 @@
 use stationc::sim::{
     ic10::{DevicePort, StopReason},
     world::{
-        Device, World, WorldAccessEvent, WorldAccessOperation, WorldAccessTarget,
+        Device, DeviceSlot, World, WorldAccessEvent, WorldAccessOperation, WorldAccessTarget,
         WorldDiagnosticKind,
     },
 };
@@ -78,6 +78,85 @@ yield
     assert_housing_register(&world, housing, 0, 301.0)?;
     assert_housing_register(&world, housing, 1, 44.0)?;
     assert_device_logic(&world, device, "On", 1.0)
+}
+
+#[test]
+fn access_trace_records_slot_logic_targets() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(
+        Device::new().with_slot(
+            2,
+            DeviceSlot::new()
+                .with_logic("Occupied", 1.0)
+                .with_logic("Quantity", 0.0),
+        ),
+    );
+    let housing = world.add_ic10_housing(
+        "\
+ls r0 d0 2 Occupied
+ss d0 2 Quantity 4
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 3, StopReason::Yield)?;
+    assert_eq!(
+        tick.access,
+        vec![
+            WorldAccessEvent {
+                tick: 0,
+                actor: housing,
+                operation: WorldAccessOperation::Read,
+                target: WorldAccessTarget::DeviceSlotLogic {
+                    reference_id: device,
+                    slot: 2,
+                    field: "Occupied".to_owned(),
+                },
+            },
+            WorldAccessEvent {
+                tick: 0,
+                actor: housing,
+                operation: WorldAccessOperation::Write,
+                target: WorldAccessTarget::DeviceSlotLogic {
+                    reference_id: device,
+                    slot: 2,
+                    field: "Quantity".to_owned(),
+                },
+            },
+        ]
+    );
+    assert!(tick.diagnostics.is_empty());
+    Ok(())
+}
+
+#[test]
+fn diagnostics_flag_repeated_slot_logic_reads() -> TestResult {
+    let mut world = World::new();
+    let device =
+        world.add_device(Device::new().with_slot(0, DeviceSlot::new().with_logic("Charge", 8.0)));
+    let housing = world.add_ic10_housing(
+        "\
+ls r0 d0 0 Charge
+ls r1 d0 0 Charge
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 3, StopReason::Yield)?;
+    assert_eq!(tick.access.len(), 2);
+    assert_eq!(tick.diagnostics.len(), 1);
+    assert_eq!(
+        tick.diagnostics[0].kind,
+        WorldDiagnosticKind::RepeatedVolatileRead
+    );
+    assert_housing_register(&world, housing, 0, 8.0)?;
+    assert_housing_register(&world, housing, 1, 8.0)
 }
 
 #[test]

@@ -356,6 +356,51 @@ impl Ic10Environment for WorldIc10Context<'_> {
             .is_some_and(|device| device.can_store_logic(field))
     }
 
+    fn load_slot_logic(
+        &mut self,
+        target: DeviceTarget,
+        slot: usize,
+        field: &str,
+    ) -> Result<f64, EnvironmentFault> {
+        let reference_id = self.reference_id_for_target(target)?;
+        let value = {
+            let device = self.resolve_reference_mut(reference_id)?;
+            device.load_slot_logic(slot, field)?
+        };
+        self.record_access(
+            WorldAccessOperation::Read,
+            WorldAccessTarget::DeviceSlotLogic {
+                reference_id,
+                slot,
+                field: field.to_owned(),
+            },
+        );
+        Ok(value)
+    }
+
+    fn store_slot_logic(
+        &mut self,
+        target: DeviceTarget,
+        slot: usize,
+        field: &str,
+        value: f64,
+    ) -> Result<(), EnvironmentFault> {
+        let reference_id = self.reference_id_for_target(target)?;
+        {
+            let device = self.resolve_reference_mut(reference_id)?;
+            device.store_slot_logic(slot, field, value)?;
+        }
+        self.record_access(
+            WorldAccessOperation::Write,
+            WorldAccessTarget::DeviceSlotLogic {
+                reference_id,
+                slot,
+                field: field.to_owned(),
+            },
+        );
+        Ok(())
+    }
+
     fn clear_stack(&mut self, target: DeviceTarget) -> Result<(), EnvironmentFault> {
         let reference_id = self.reference_id_for_target(target)?;
         {

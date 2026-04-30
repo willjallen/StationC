@@ -58,6 +58,7 @@ pub(super) enum ParseErrorCode {
     DefineValueMustBeNumeric,
     UnsupportedInstruction,
     ExpectedRegister,
+    ExpectedDevicePin,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -277,6 +278,7 @@ fn parse_instruction(
         "move" | "rand" | "select" => parse_register_instruction(tokens, context),
         "push" | "pop" | "peek" | "poke" => parse_local_stack_instruction(tokens, context),
         "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
+        "ls" | "ss" => parse_slot_logic_instruction(tokens, context),
         "sdns" | "sdse" => parse_device_predicate_instruction(tokens, context),
         "lb" | "lbn" | "sb" | "sbn" => parse_batch_logic_instruction(tokens, context),
         "clr" | "clrd" | "get" | "put" | "getd" | "putd" => {
@@ -433,6 +435,43 @@ fn parse_store_logic_instruction(
         device,
         field: parse_logic_field(tokens[2], context),
         value: parse_value(tokens[3], context),
+    })
+}
+
+fn parse_slot_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    match tokens[0] {
+        "ls" => parse_load_slot_logic_instruction(tokens, context),
+        "ss" => parse_store_slot_logic_instruction(tokens, context),
+        mnemonic => unsupported_instruction(mnemonic, context.line_number),
+    }
+}
+
+fn parse_load_slot_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 5, context.line_number)?;
+    Ok(Instruction::LoadSlotLogic {
+        destination: parse_register(tokens[1], context)?,
+        device: parse_slot_device(tokens[2], context)?,
+        slot: parse_value(tokens[3], context),
+        field: parse_logic_field(tokens[4], context),
+    })
+}
+
+fn parse_store_slot_logic_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 5, context.line_number)?;
+    Ok(Instruction::StoreSlotLogic {
+        device: parse_slot_device(tokens[1], context)?,
+        slot: parse_value(tokens[2], context),
+        field: parse_logic_field(tokens[3], context),
+        value: parse_value(tokens[4], context),
     })
 }
 
@@ -1080,6 +1119,22 @@ fn parse_device_operand(token: &str, context: ParseContext<'_>) -> DeviceOperand
             || DeviceOperand::Reference(parse_value(token, context)),
             DeviceOperand::Port,
         ),
+    }
+}
+
+fn parse_slot_device(
+    token: &str,
+    context: ParseContext<'_>,
+) -> Result<DevicePortOperand, ParseError> {
+    match context.aliases.get(token).copied() {
+        Some(AliasTarget::Device(device)) => Ok(device),
+        Some(AliasTarget::Register(_)) | None => parse_device_port_token(token).ok_or_else(|| {
+            ParseError::new(
+                ParseErrorCode::ExpectedDevicePin,
+                context.line_number,
+                format!("expected device pin, found `{token}`"),
+            )
+        }),
     }
 }
 

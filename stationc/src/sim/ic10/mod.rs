@@ -247,6 +247,8 @@ pub enum ErrorCode {
     UnsupportedInstruction,
     /// An operand that must be a register was not a register.
     ExpectedRegister,
+    /// An operand that must be a direct or indirect device pin was not a device pin.
+    ExpectedDevicePin,
     /// A symbol was referenced but not defined.
     UnknownSymbol,
     /// A numeric logic type did not resolve to a known logic field.
@@ -287,6 +289,8 @@ pub enum ErrorCode {
     UnknownReferenceId,
     /// A device did not expose the requested logic field.
     UnknownLogicField,
+    /// A device did not expose the requested slot.
+    UnknownSlot,
     /// A device logic field can be read but not written.
     ReadOnlyLogicField,
     /// A device stack operation addressed outside device stack memory.
@@ -351,6 +355,7 @@ const fn parse_error_code(error: parser::ParseErrorCode) -> ErrorCode {
         parser::ParseErrorCode::DefineValueMustBeNumeric => ErrorCode::DefineValueMustBeNumeric,
         parser::ParseErrorCode::UnsupportedInstruction => ErrorCode::UnsupportedInstruction,
         parser::ParseErrorCode::ExpectedRegister => ErrorCode::ExpectedRegister,
+        parser::ParseErrorCode::ExpectedDevicePin => ErrorCode::ExpectedDevicePin,
     }
 }
 
@@ -403,6 +408,9 @@ const fn ic10_fault_code(error: &ic10::Ic10Fault) -> ErrorCode {
         ic10::Ic10Fault::Environment(environment::EnvironmentFault::UnknownLogicField {
             ..
         }) => ErrorCode::UnknownLogicField,
+        ic10::Ic10Fault::Environment(environment::EnvironmentFault::UnknownSlot { .. }) => {
+            ErrorCode::UnknownSlot
+        }
         ic10::Ic10Fault::Environment(environment::EnvironmentFault::ReadOnlyLogicField {
             ..
         }) => ErrorCode::ReadOnlyLogicField,

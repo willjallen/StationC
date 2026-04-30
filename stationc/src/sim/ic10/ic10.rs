@@ -222,6 +222,34 @@ impl Ic10 {
                 field,
                 value,
             } => self.execute_store_logic(environment, &device, &field, &value),
+            Instruction::LoadSlotLogic {
+                destination,
+                device,
+                slot,
+                field,
+            } => self.execute_load_slot_logic(
+                environment,
+                SlotLoadOperands {
+                    destination,
+                    device,
+                    slot: &slot,
+                    field: &field,
+                },
+            ),
+            Instruction::StoreSlotLogic {
+                device,
+                slot,
+                field,
+                value,
+            } => self.execute_store_slot_logic(
+                environment,
+                SlotStoreOperands {
+                    device,
+                    slot: &slot,
+                    field: &field,
+                    value: &value,
+                },
+            ),
             Instruction::DeviceSet {
                 destination,
                 device,
@@ -419,6 +447,32 @@ impl Ic10 {
         let field = self.logic_field(field)?;
         let value = self.value(value)?;
         environment.store_logic(target, field, value)?;
+        Ok(step_stop(environment))
+    }
+
+    fn execute_load_slot_logic<E: Ic10Environment>(
+        &mut self,
+        environment: &mut E,
+        operands: SlotLoadOperands<'_>,
+    ) -> Result<StepStop, Ic10Fault> {
+        let target = DeviceTarget::Port(self.device_port(operands.device)?);
+        let slot = numeric_index(self.value(operands.slot)?)?;
+        let field = self.logic_field(operands.field)?;
+        let value = environment.load_slot_logic(target, slot, field)?;
+        self.write(operands.destination, value)?;
+        Ok(step_stop(environment))
+    }
+
+    fn execute_store_slot_logic<E: Ic10Environment>(
+        &self,
+        environment: &mut E,
+        operands: SlotStoreOperands<'_>,
+    ) -> Result<StepStop, Ic10Fault> {
+        let target = DeviceTarget::Port(self.device_port(operands.device)?);
+        let slot = numeric_index(self.value(operands.slot)?)?;
+        let field = self.logic_field(operands.field)?;
+        let value = self.value(operands.value)?;
+        environment.store_slot_logic(target, slot, field, value)?;
         Ok(step_stop(environment))
     }
 
@@ -748,6 +802,22 @@ struct BatchLoadOperands<'a> {
 struct BatchStoreOperands<'a> {
     prefab_hash: &'a ValueOperand,
     name_hash: Option<&'a ValueOperand>,
+    field: &'a LogicFieldOperand,
+    value: &'a ValueOperand,
+}
+
+#[derive(Clone, Copy)]
+struct SlotLoadOperands<'a> {
+    destination: RegisterRef,
+    device: DevicePortOperand,
+    slot: &'a ValueOperand,
+    field: &'a LogicFieldOperand,
+}
+
+#[derive(Clone, Copy)]
+struct SlotStoreOperands<'a> {
+    device: DevicePortOperand,
+    slot: &'a ValueOperand,
     field: &'a LogicFieldOperand,
     value: &'a ValueOperand,
 }

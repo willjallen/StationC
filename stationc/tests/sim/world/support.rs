@@ -35,6 +35,31 @@ pub(super) fn assert_device_logic(
     assert_number(actual, expected, field)
 }
 
+pub(super) fn assert_device_slot_logic(
+    world: &World,
+    reference_id: ReferenceId,
+    slot_index: usize,
+    field: &str,
+    expected: f64,
+) -> TestResult {
+    let device = world
+        .device(reference_id)
+        .ok_or_else(|| test_error(format!("missing device {}", reference_id.value())))?;
+    let slot = device.slot(slot_index).ok_or_else(|| {
+        test_error(format!(
+            "missing slot {slot_index} on device {}",
+            reference_id.value()
+        ))
+    })?;
+    let actual = slot.logic(field).ok_or_else(|| {
+        test_error(format!(
+            "missing logic field {field} on slot {slot_index} of device {}",
+            reference_id.value()
+        ))
+    })?;
+    assert_number(actual, expected, field)
+}
+
 pub(super) fn assert_device_stack(
     world: &World,
     reference_id: ReferenceId,

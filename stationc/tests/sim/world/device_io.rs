@@ -1,13 +1,14 @@
 use stationc::sim::{
     ic10::{DevicePort, Error as Ic10Error, ErrorCode, Ic10, ReferenceId, StopReason},
     world::{
-        Device, World, WorldAccessOperation, WorldAccessTarget, WorldDiagnosticKind, WorldError,
+        Device, DeviceSlot, World, WorldAccessOperation, WorldAccessTarget, WorldDiagnosticKind,
+        WorldError,
     },
 };
 
 use super::support::{
-    TestResult, assert_device_logic, assert_device_stack, assert_housing_register,
-    assert_housing_stack, assert_number, assert_tick,
+    TestResult, assert_device_logic, assert_device_slot_logic, assert_device_stack,
+    assert_housing_register, assert_housing_stack, assert_number, assert_tick,
 };
 
 #[test]
@@ -441,6 +442,236 @@ hcf
 
     assert_tick(tick.ic10[0].tick, 4, StopReason::Yield)?;
     assert_housing_register(&world, housing, 1, 0.0)
+}
+
+#[test]
+fn slot_logic_loads_and_stores_through_device_pin() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(
+        Device::new().with_slot(
+            2,
+            DeviceSlot::new()
+                .with_logic("Occupied", 1.0)
+                .with_logic("Quantity", 0.0),
+        ),
+    );
+    let housing = world.add_ic10_housing(
+        "\
+ls r0 d0 2 Occupied
+ss d0 2 Quantity 42
+ls r1 d0 2 Quantity
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 4, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, 1.0)?;
+    assert_housing_register(&world, housing, 1, 42.0)?;
+    assert_device_slot_logic(&world, device, 2, "Quantity", 42.0)
+}
+
+#[test]
+fn slot_logic_accepts_device_aliases_db_and_dynamic_operands() -> TestResult {
+    let mut world = World::new();
+    let battery =
+        world.add_device(Device::new().with_slot(0, DeviceSlot::new().with_logic("Charge", 123.0)));
+    let housing = world.add_ic10_housing(
+        "\
+alias battery d0
+move r0 0
+move r1 LogicType.Charge
+ls r2 battery r0 r1
+ls r3 db 0 FilterType
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, battery)?;
+    world
+        .ic10_housing_mut(housing)
+        .ok_or_else(|| std::io::Error::other("missing housing"))?
+        .device_mut()
+        .set_slot(0, DeviceSlot::new().with_logic("FilterType", 16.0));
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 5, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 2, 123.0)?;
+    assert_housing_register(&world, housing, 3, 16.0)
+}
+
+#[test]
+fn slot_logic_supports_indirect_pins_and_dynamic_store_operands() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(
+        Device::new().with_slot(
+            1,
+            DeviceSlot::new()
+                .with_logic("Charge", 0.0)
+                .with_logic("Quantity", 0.0),
+        ),
+    );
+    let housing = world.add_ic10_housing(
+        "\
+move r0 3
+move r1 1
+move r2 LogicType.Charge
+move r3 456
+ss dr0 r1 r2 r3
+ls r4 d3 1 Charge
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D3, device)?;
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 7, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 4, 456.0)?;
+    assert_device_slot_logic(&world, device, 1, "Charge", 456.0)
+}
+
+#[test]
+fn slot_logic_stores_to_db_slot() -> TestResult {
+    let mut world = World::new();
+    let housing = world.add_ic10_housing(
+        "\
+ss db 0 Quantity 12
+ls r0 db 0 Quantity
+yield
+",
+    )?;
+    world
+        .ic10_housing_mut(housing)
+        .ok_or_else(|| std::io::Error::other("missing housing"))?
+        .device_mut()
+        .set_slot(0, DeviceSlot::new().with_logic("Quantity", 0.0));
+
+    let tick = world.tick()?;
+
+    assert_tick(tick.ic10[0].tick, 3, StopReason::Yield)?;
+    assert_housing_register(&world, housing, 0, 12.0)
+}
+
+#[test]
+fn slot_logic_errors_are_typed() -> TestResult {
+    let mut world = World::new();
+    let device = world.add_device(
+        Device::new().with_slot(
+            0,
+            DeviceSlot::new()
+                .with_logic("Charge", 10.0)
+                .with_read_only_logic("OccupantHash", 77.0),
+        ),
+    );
+
+    let missing_slot = world.add_ic10_housing(
+        "\
+ls r0 d0 1 Charge
+yield
+",
+    )?;
+    world.connect_pin(missing_slot, DevicePort::D0, device)?;
+    let error = tick_error(&mut world)?;
+    assert_ic10_error_code(error, ErrorCode::UnknownSlot)?;
+
+    let mut world = World::new();
+    let device =
+        world.add_device(Device::new().with_slot(0, DeviceSlot::new().with_logic("Charge", 10.0)));
+    let missing_field = world.add_ic10_housing(
+        "\
+ls r0 d0 0 Missing
+yield
+",
+    )?;
+    world.connect_pin(missing_field, DevicePort::D0, device)?;
+    let error = tick_error(&mut world)?;
+    assert_ic10_error_code(error, ErrorCode::UnknownLogicField)?;
+
+    let mut world = World::new();
+    let device = world.add_device(Device::new().with_slot(
+        0,
+        DeviceSlot::new().with_read_only_logic("OccupantHash", 77.0),
+    ));
+    let read_only = world.add_ic10_housing(
+        "\
+ss d0 0 OccupantHash 88
+yield
+",
+    )?;
+    world.connect_pin(read_only, DevicePort::D0, device)?;
+    let error = tick_error(&mut world)?;
+    assert_ic10_error_code(error, ErrorCode::ReadOnlyLogicField)
+}
+
+#[test]
+fn slot_logic_invalid_slot_index_and_unbound_pin_are_typed() -> TestResult {
+    let mut world = World::new();
+    let device =
+        world.add_device(Device::new().with_slot(0, DeviceSlot::new().with_logic("Charge", 10.0)));
+    let housing = world.add_ic10_housing(
+        "\
+ls r0 d0 -1 Charge
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+    let error = tick_error(&mut world)?;
+    assert_ic10_error_code(error, ErrorCode::InvalidNumericIndex)?;
+
+    let mut world = World::new();
+    let device =
+        world.add_device(Device::new().with_slot(0, DeviceSlot::new().with_logic("Charge", 10.0)));
+    let housing = world.add_ic10_housing(
+        "\
+ls r0 d0 1.5 Charge
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+    let error = tick_error(&mut world)?;
+    assert_ic10_error_code(error, ErrorCode::InvalidNumericIndex)?;
+
+    let mut world = World::new();
+    let device =
+        world.add_device(Device::new().with_slot(0, DeviceSlot::new().with_logic("Charge", 10.0)));
+    let housing = world.add_ic10_housing(
+        "\
+move r0 6
+ls r1 dr0 0 Charge
+yield
+",
+    )?;
+    world.connect_pin(housing, DevicePort::D0, device)?;
+    let error = tick_error(&mut world)?;
+    assert_ic10_error_code(error, ErrorCode::InvalidDevicePortIndex)?;
+
+    let mut world = World::new();
+    world.add_ic10_housing(
+        "\
+ls r0 d0 0 Charge
+yield
+",
+    )?;
+    let error = tick_error(&mut world)?;
+    assert_ic10_error_code(error, ErrorCode::DevicePortUnbound)
+}
+
+#[test]
+fn standalone_ic10_requires_world_context_for_slot_logic() -> TestResult {
+    let mut ic10 = Ic10::from_source(
+        "\
+ls r0 d0 0 Charge
+yield
+",
+    )?;
+
+    let error = ic10_tick_error(&mut ic10)?;
+
+    assert_eq!(error.code(), ErrorCode::WorldContextRequired);
+    Ok(())
 }
 
 #[test]

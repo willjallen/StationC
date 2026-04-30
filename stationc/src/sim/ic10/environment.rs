@@ -145,6 +145,10 @@ pub enum EnvironmentOperation {
     BatchStoreLogic,
     /// Write a device logic field.
     StoreLogic,
+    /// Read a device slot logic field.
+    LoadSlotLogic,
+    /// Write a device slot logic field.
+    StoreSlotLogic,
     /// Clear device stack memory.
     ClearStack,
     /// Read device stack memory.
@@ -160,6 +164,8 @@ impl fmt::Display for EnvironmentOperation {
             Self::BatchLoadLogic => formatter.write_str("batch load logic"),
             Self::BatchStoreLogic => formatter.write_str("batch store logic"),
             Self::StoreLogic => formatter.write_str("store logic"),
+            Self::LoadSlotLogic => formatter.write_str("load slot logic"),
+            Self::StoreSlotLogic => formatter.write_str("store slot logic"),
             Self::ClearStack => formatter.write_str("clear stack"),
             Self::GetStack => formatter.write_str("get stack"),
             Self::PutStack => formatter.write_str("put stack"),
@@ -190,6 +196,11 @@ pub enum EnvironmentFault {
         /// The missing field name.
         field: String,
     },
+    /// The selected device does not expose the requested slot.
+    UnknownSlot {
+        /// The missing slot index.
+        slot: usize,
+    },
     /// The selected logic field can be read but not written.
     ReadOnlyLogicField {
         /// The read-only field name.
@@ -215,6 +226,7 @@ impl fmt::Display for EnvironmentFault {
             Self::UnknownLogicField { field } => {
                 write!(formatter, "unknown logic field `{field}`")
             }
+            Self::UnknownSlot { slot } => write!(formatter, "unknown device slot `{slot}`"),
             Self::ReadOnlyLogicField { field } => {
                 write!(formatter, "logic field `{field}` is read-only")
             }
@@ -283,6 +295,31 @@ pub trait Ic10Environment {
     /// Returns whether a logic field can be written on a device target.
     #[must_use]
     fn can_store_logic(&mut self, target: DeviceTarget, field: &str) -> bool;
+
+    /// Reads a logic field from an indexed device slot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EnvironmentFault`] if the target, slot, or field cannot be read.
+    fn load_slot_logic(
+        &mut self,
+        target: DeviceTarget,
+        slot: usize,
+        field: &str,
+    ) -> Result<f64, EnvironmentFault>;
+
+    /// Writes a logic field on an indexed device slot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EnvironmentFault`] if the target, slot, or field cannot be written.
+    fn store_slot_logic(
+        &mut self,
+        target: DeviceTarget,
+        slot: usize,
+        field: &str,
+        value: f64,
+    ) -> Result<(), EnvironmentFault>;
 
     /// Clears stack memory on a device target.
     ///
@@ -373,6 +410,29 @@ impl Ic10Environment for NoEnvironment {
 
     fn can_store_logic(&mut self, _target: DeviceTarget, _field: &str) -> bool {
         false
+    }
+
+    fn load_slot_logic(
+        &mut self,
+        _target: DeviceTarget,
+        _slot: usize,
+        _field: &str,
+    ) -> Result<f64, EnvironmentFault> {
+        Err(EnvironmentFault::WorldContextRequired {
+            operation: EnvironmentOperation::LoadSlotLogic,
+        })
+    }
+
+    fn store_slot_logic(
+        &mut self,
+        _target: DeviceTarget,
+        _slot: usize,
+        _field: &str,
+        _value: f64,
+    ) -> Result<(), EnvironmentFault> {
+        Err(EnvironmentFault::WorldContextRequired {
+            operation: EnvironmentOperation::StoreSlotLogic,
+        })
     }
 
     fn clear_stack(&mut self, _target: DeviceTarget) -> Result<(), EnvironmentFault> {

@@ -162,6 +162,18 @@ yield
 }
 
 #[test]
+fn slot_logic_requires_device_pin_operand() -> TestResult {
+    parse_failure(
+        "\
+ls r0 r1 0 Charge
+yield
+",
+        ErrorCode::ExpectedDevicePin,
+        1,
+    )
+}
+
+#[test]
 fn invalid_register_number_is_parse_error() -> TestResult {
     parse_failure(
         "\

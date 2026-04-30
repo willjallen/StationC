@@ -7,7 +7,7 @@ mod tick;
 #[allow(clippy::module_inception)]
 mod world;
 
-pub use device::Device;
+pub use device::{Device, DeviceSlot};
 pub use ic_housing::IcHousing;
 pub use tick::{
     IC10_INSTRUCTIONS_PER_TICK, Ic10Schedule, Ic10TickResult, WorldAccessEvent,

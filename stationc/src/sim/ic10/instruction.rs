@@ -99,6 +99,18 @@ pub(super) enum Instruction {
         field: LogicFieldOperand,
         value: ValueOperand,
     },
+    LoadSlotLogic {
+        destination: RegisterRef,
+        device: DevicePortOperand,
+        slot: ValueOperand,
+        field: LogicFieldOperand,
+    },
+    StoreSlotLogic {
+        device: DevicePortOperand,
+        slot: ValueOperand,
+        field: LogicFieldOperand,
+        value: ValueOperand,
+    },
     DeviceSet {
         destination: RegisterRef,
         device: DeviceOperand,
