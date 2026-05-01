@@ -35,7 +35,8 @@ Status values:
 | --- | --- | --- | --- |
 | Tick yield | `yield` | Yes | Stops the current IC10 tick. |
 | Hard fault | `hcf` | Yes | Reported as a typed runtime fault. |
-| Sleep | `sleep` | No | No multi-tick sleep timer is implemented. |
+| Sleep | `sleep` | Yes | Uses a simulated two-ticks-per-second timer; no real-time delay occurs. |
+| Single-step API | public simulator `step` methods | Yes | Executes at most one instruction and reports sleep ticks separately from yields. |
 | Instruction budget | 128-instruction default tick budget | Yes | Standalone and world simulators support caller-provided budgets. |
 | Program halt | program counter reaches end | Yes | Reported as `Halt`. |
 
@@ -111,5 +112,4 @@ Status values:
 
 | Area | Mnemonics |
 | --- | --- |
-| Execution control | `sleep` |
 | Reagents | `lr`, `rmap` |

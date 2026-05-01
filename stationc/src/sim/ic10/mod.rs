@@ -17,7 +17,7 @@ pub use environment::{
     BatchMode, BatchSlotLoadRequest, DevicePort, DeviceTarget, EnvironmentFault,
     EnvironmentOperation, Ic10Environment, NoEnvironment, ReferenceId,
 };
-use ic10::{Ic10 as CoreIc10, RunStop};
+use ic10::{Ic10 as CoreIc10, RunStop, SingleStepStop};
 use parser::parse_program;
 use registers::REGISTER_COUNT as INTERNAL_REGISTER_COUNT;
 use stack::STACK_SIZE as INTERNAL_STACK_SIZE;
@@ -121,6 +121,39 @@ impl Ic10 {
         Ok(results)
     }
 
+    /// Executes at most one IC10 instruction.
+    ///
+    /// When the program is sleeping, this advances one simulated IC10 tick and may execute no
+    /// instruction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] when execution encounters a runtime fault.
+    pub fn step(&mut self) -> Result<StepResult, Error> {
+        let mut trace_sink = TraceSink::disabled();
+        let result = self.inner.step_once(&mut trace_sink)?;
+        Ok(result.into())
+    }
+
+    /// Executes at most one IC10 instruction with a caller-provided world environment.
+    ///
+    /// When the program is sleeping, this advances one simulated IC10 tick and may execute no
+    /// instruction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] when execution encounters a runtime fault.
+    pub fn step_with_environment<E: Ic10Environment>(
+        &mut self,
+        environment: &mut E,
+    ) -> Result<StepResult, Error> {
+        let mut trace_sink = TraceSink::disabled();
+        let result = self
+            .inner
+            .step_once_with_environment(&mut trace_sink, environment)?;
+        Ok(result.into())
+    }
+
     /// Returns the current program counter.
     #[must_use]
     pub const fn program_counter(&self) -> usize {
@@ -206,11 +239,58 @@ pub struct TracedTickResult {
     pub trace: Vec<TraceEvent>,
 }
 
+/// Result of executing at most one IC10 instruction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StepResult {
+    /// Number of instructions executed by the step.
+    pub instructions_executed: u32,
+    /// Reason the step stopped.
+    pub stop: StepReason,
+}
+
+impl From<ic10::SingleStepResult> for StepResult {
+    fn from(value: ic10::SingleStepResult) -> Self {
+        Self {
+            instructions_executed: value.instructions_executed,
+            stop: value.stop.into(),
+        }
+    }
+}
+
+/// Reason a single IC10 step stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepReason {
+    /// One instruction executed and execution can continue.
+    Continue,
+    /// The program executed `yield`.
+    Yield,
+    /// The program executed `sleep` or is waiting for a sleep timer.
+    Sleep,
+    /// The world environment suspended execution, such as when an IC housing is turned off.
+    Disabled,
+    /// The program counter reached the end of the program.
+    Halt,
+}
+
+impl From<SingleStepStop> for StepReason {
+    fn from(value: SingleStepStop) -> Self {
+        match value {
+            SingleStepStop::Continue => Self::Continue,
+            SingleStepStop::Yielded => Self::Yield,
+            SingleStepStop::Sleeping => Self::Sleep,
+            SingleStepStop::Disabled => Self::Disabled,
+            SingleStepStop::Halted => Self::Halt,
+        }
+    }
+}
+
 /// Reason an IC10 tick stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopReason {
     /// The program executed `yield`.
     Yield,
+    /// The program executed `sleep` or is waiting for a sleep timer.
+    Sleep,
     /// The world environment suspended execution, such as when an IC housing is turned off.
     Disabled,
     /// The instruction budget was exhausted.
@@ -223,6 +303,7 @@ impl From<RunStop> for StopReason {
     fn from(value: RunStop) -> Self {
         match value {
             RunStop::Yielded => Self::Yield,
+            RunStop::Sleeping => Self::Sleep,
             RunStop::Disabled => Self::Disabled,
             RunStop::BudgetExhausted => Self::Budget,
             RunStop::Halted => Self::Halt,
@@ -265,6 +346,8 @@ pub enum ErrorCode {
     InvalidDevicePortIndex,
     /// A numeric value could not be used as a batch mode.
     InvalidBatchMode,
+    /// A numeric value could not be used as a sleep duration.
+    InvalidSleepDuration,
     /// An operand expected to be an integer was not an integer.
     InvalidIntegerOperand,
     /// A shift count was invalid.
@@ -380,6 +463,7 @@ const fn ic10_fault_code(error: &ic10::Ic10Fault) -> ErrorCode {
         ic10::Ic10Fault::InvalidReferenceId(_) => ErrorCode::InvalidReferenceId,
         ic10::Ic10Fault::InvalidDevicePortIndex(_) => ErrorCode::InvalidDevicePortIndex,
         ic10::Ic10Fault::InvalidBatchMode(_) => ErrorCode::InvalidBatchMode,
+        ic10::Ic10Fault::InvalidSleepDuration(_) => ErrorCode::InvalidSleepDuration,
         ic10::Ic10Fault::InvalidIntegerOperand(_) => ErrorCode::InvalidIntegerOperand,
         ic10::Ic10Fault::InvalidShiftOperand(_) => ErrorCode::InvalidShiftOperand,
         ic10::Ic10Fault::InvalidBitFieldRange { .. } => ErrorCode::InvalidBitFieldRange,

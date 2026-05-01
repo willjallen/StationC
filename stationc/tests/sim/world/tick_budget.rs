@@ -73,6 +73,27 @@ yield
 }
 
 #[test]
+fn sleep_waits_on_simulated_world_ticks() -> TestResult {
+    let mut world = World::new();
+    let housing_id = world.add_ic10_housing(
+        "\
+sleep 1
+move r0 7
+yield
+",
+    )?;
+
+    let first_tick = world.tick()?;
+    let second_tick = world.tick()?;
+    let third_tick = world.tick()?;
+
+    assert_tick(first_tick.ic10[0].tick, 1, StopReason::Sleep)?;
+    assert_tick(second_tick.ic10[0].tick, 0, StopReason::Sleep)?;
+    assert_tick(third_tick.ic10[0].tick, 2, StopReason::Yield)?;
+    assert_housing_register(&world, housing_id, 0, 7.0)
+}
+
+#[test]
 fn rotating_schedule_changes_ic10_tick_order() -> TestResult {
     let mut world = World::new();
     world.set_ic10_schedule(Ic10Schedule::Rotating);

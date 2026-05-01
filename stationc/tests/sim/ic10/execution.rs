@@ -1,4 +1,4 @@
-use stationc::sim::ic10::{ErrorCode, StopReason, TraceEvent};
+use stationc::sim::ic10::{ErrorCode, Ic10, StepReason, StopReason, TraceEvent};
 
 use super::support::{
     TestResult, assert_pc, assert_register, assert_tick, assert_trace_event, run, run_ticks,
@@ -35,6 +35,122 @@ yield
     assert_tick(tick(&results, 1)?, 2, StopReason::Yield)?;
     assert_pc(&ic10, 4)?;
     assert_register(&ic10, 0, 2.0)
+}
+
+#[test]
+fn sleep_stops_current_tick_and_resumes_after_simulated_ticks() -> TestResult {
+    let (ic10, results) = run_ticks(
+        "\
+sleep 1
+move r0 7
+yield
+",
+        3,
+        128,
+    )?;
+
+    assert_tick(tick(&results, 0)?, 1, StopReason::Sleep)?;
+    assert_tick(tick(&results, 1)?, 0, StopReason::Sleep)?;
+    assert_tick(tick(&results, 2)?, 2, StopReason::Yield)?;
+    assert_pc(&ic10, 3)?;
+    assert_register(&ic10, 0, 7.0)
+}
+
+#[test]
+fn fractional_sleep_uses_two_simulated_ticks_per_second() -> TestResult {
+    let (ic10, results) = run_ticks(
+        "\
+sleep 0.5
+move r0 1
+yield
+",
+        2,
+        128,
+    )?;
+
+    assert_tick(tick(&results, 0)?, 1, StopReason::Sleep)?;
+    assert_tick(tick(&results, 1)?, 2, StopReason::Yield)?;
+    assert_pc(&ic10, 3)?;
+    assert_register(&ic10, 0, 1.0)
+}
+
+#[test]
+fn sleep_duration_can_come_from_register() -> TestResult {
+    let (ic10, results) = run_ticks(
+        "\
+move r0 0.5
+sleep r0
+move r1 9
+yield
+",
+        2,
+        128,
+    )?;
+
+    assert_tick(tick(&results, 0)?, 2, StopReason::Sleep)?;
+    assert_tick(tick(&results, 1)?, 2, StopReason::Yield)?;
+    assert_pc(&ic10, 4)?;
+    assert_register(&ic10, 1, 9.0)
+}
+
+#[test]
+fn invalid_sleep_duration_faults() -> TestResult {
+    runtime_failure(
+        "\
+sleep -1
+",
+        128,
+        ErrorCode::InvalidSleepDuration,
+    )?;
+
+    Ok(())
+}
+
+#[test]
+fn single_step_api_executes_one_instruction() -> TestResult {
+    let mut ic10 = Ic10::from_source(
+        "\
+move r0 1
+yield
+",
+    )?;
+
+    let step = ic10.step()?;
+    assert_eq!(step.instructions_executed, 1);
+    assert_eq!(step.stop, StepReason::Continue);
+    assert_register(&ic10, 0, 1.0)?;
+
+    let step = ic10.step()?;
+    assert_eq!(step.instructions_executed, 1);
+    assert_eq!(step.stop, StepReason::Yield);
+
+    let step = ic10.step()?;
+    assert_eq!(step.instructions_executed, 0);
+    assert_eq!(step.stop, StepReason::Halt);
+    Ok(())
+}
+
+#[test]
+fn single_step_api_observes_sleep_timer() -> TestResult {
+    let mut ic10 = Ic10::from_source(
+        "\
+sleep 1
+move r0 1
+",
+    )?;
+
+    let step = ic10.step()?;
+    assert_eq!(step.instructions_executed, 1);
+    assert_eq!(step.stop, StepReason::Sleep);
+
+    let step = ic10.step()?;
+    assert_eq!(step.instructions_executed, 0);
+    assert_eq!(step.stop, StepReason::Sleep);
+
+    let step = ic10.step()?;
+    assert_eq!(step.instructions_executed, 1);
+    assert_eq!(step.stop, StepReason::Continue);
+    assert_register(&ic10, 0, 1.0)
 }
 
 #[test]

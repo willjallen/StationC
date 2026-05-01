@@ -20,6 +20,9 @@ use super::{
     trace::TraceSink,
 };
 
+const SIM_TICKS_PER_SECOND: f64 = 2.0;
+const U64_MAX_EXCLUSIVE_AS_F64: f64 = 18_446_744_073_709_551_616.0;
+
 #[derive(Debug)]
 pub(super) struct Ic10 {
     program: Program,
@@ -27,6 +30,7 @@ pub(super) struct Ic10 {
     stack: Stack,
     program_counter: usize,
     random_state: u64,
+    sleep_ticks_remaining: u64,
 }
 
 impl Ic10 {
@@ -37,6 +41,7 @@ impl Ic10 {
             stack: Stack::new(),
             program_counter: 0,
             random_state: 0x4d59_5df4_d0f3_3173,
+            sleep_ticks_remaining: 0,
         }
     }
 
@@ -68,6 +73,13 @@ impl Ic10 {
         environment: &mut E,
     ) -> Result<RunResult, Ic10Fault> {
         let mut instructions_executed = 0;
+        if self.sleep_blocks_this_tick() {
+            return Ok(RunResult {
+                instructions_executed,
+                stop: RunStop::Sleeping,
+            });
+        }
+
         for _ in 0..budget {
             match self.step(trace, environment)? {
                 StepStop::Continue => instructions_executed += 1,
@@ -85,6 +97,13 @@ impl Ic10 {
                         stop: RunStop::Yielded,
                     });
                 }
+                StepStop::Sleeping => {
+                    instructions_executed += 1;
+                    return Ok(RunResult {
+                        instructions_executed,
+                        stop: RunStop::Sleeping,
+                    });
+                }
                 StepStop::Halted => {
                     return Ok(RunResult {
                         instructions_executed,
@@ -96,6 +115,37 @@ impl Ic10 {
         Ok(RunResult {
             instructions_executed,
             stop: RunStop::BudgetExhausted,
+        })
+    }
+
+    pub(super) fn step_once(
+        &mut self,
+        trace: &mut TraceSink,
+    ) -> Result<SingleStepResult, Ic10Fault> {
+        let mut environment = NoEnvironment;
+        self.step_once_with_environment(trace, &mut environment)
+    }
+
+    pub(super) fn step_once_with_environment<E: Ic10Environment>(
+        &mut self,
+        trace: &mut TraceSink,
+        environment: &mut E,
+    ) -> Result<SingleStepResult, Ic10Fault> {
+        if self.sleep_blocks_this_tick() {
+            return Ok(SingleStepResult {
+                instructions_executed: 0,
+                stop: SingleStepStop::Sleeping,
+            });
+        }
+
+        let step_stop = self.step(trace, environment)?;
+        let instructions_executed = match step_stop {
+            StepStop::Halted => 0,
+            StepStop::Continue | StepStop::Disabled | StepStop::Yielded | StepStop::Sleeping => 1,
+        };
+        Ok(SingleStepResult {
+            instructions_executed,
+            stop: step_stop.into(),
         })
     }
 
@@ -124,6 +174,7 @@ impl Ic10 {
     ) -> Result<StepStop, Ic10Fault> {
         match instruction {
             Instruction::Yield => Ok(StepStop::Yielded),
+            Instruction::Sleep { duration } => self.execute_sleep(&duration),
             Instruction::Hcf => Err(Ic10Fault::HaltAndCatchFire { pc: current_pc }),
             Instruction::Move {
                 destination,
@@ -298,6 +349,11 @@ impl Ic10 {
                 value,
             } => self.execute_put_stack(environment, &device, &address, &value),
         }
+    }
+
+    fn execute_sleep(&mut self, duration: &ValueOperand) -> Result<StepStop, Ic10Fault> {
+        self.sleep_ticks_remaining = sleep_ticks(self.value(duration)?)?;
+        Ok(StepStop::Sleeping)
     }
 
     fn execute_move(
@@ -836,6 +892,14 @@ impl Ic10 {
         }
     }
 
+    const fn sleep_blocks_this_tick(&mut self) -> bool {
+        if self.sleep_ticks_remaining == 0 {
+            return false;
+        }
+        self.sleep_ticks_remaining -= 1;
+        self.sleep_ticks_remaining > 0
+    }
+
     fn next_random(&mut self) -> f64 {
         self.random_state = self
             .random_state
@@ -855,7 +919,20 @@ enum StepStop {
     Continue,
     Disabled,
     Yielded,
+    Sleeping,
     Halted,
+}
+
+impl From<StepStop> for SingleStepStop {
+    fn from(value: StepStop) -> Self {
+        match value {
+            StepStop::Continue => Self::Continue,
+            StepStop::Disabled => Self::Disabled,
+            StepStop::Yielded => Self::Yielded,
+            StepStop::Sleeping => Self::Sleeping,
+            StepStop::Halted => Self::Halted,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -910,8 +987,24 @@ struct SlotStoreOperands<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SingleStepStop {
+    Continue,
+    Yielded,
+    Sleeping,
+    Disabled,
+    Halted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SingleStepResult {
+    pub(super) instructions_executed: u32,
+    pub(super) stop: SingleStepStop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RunStop {
     Yielded,
+    Sleeping,
     Disabled,
     BudgetExhausted,
     Halted,
@@ -921,6 +1014,7 @@ impl fmt::Display for RunStop {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Yielded => formatter.write_str("yield"),
+            Self::Sleeping => formatter.write_str("sleep"),
             Self::Disabled => formatter.write_str("disabled"),
             Self::BudgetExhausted => formatter.write_str("budget"),
             Self::Halted => formatter.write_str("halt"),
@@ -944,6 +1038,7 @@ pub(super) enum Ic10Fault {
     InvalidReferenceId(f64),
     InvalidDevicePortIndex(f64),
     InvalidBatchMode(f64),
+    InvalidSleepDuration(f64),
     InvalidIntegerOperand(f64),
     InvalidShiftOperand(i64),
     InvalidBitFieldRange { offset: i64, length: i64 },
@@ -975,6 +1070,9 @@ impl fmt::Display for Ic10Fault {
                 write!(formatter, "invalid device port index `{value}`")
             }
             Self::InvalidBatchMode(value) => write!(formatter, "invalid batch mode `{value}`"),
+            Self::InvalidSleepDuration(value) => {
+                write!(formatter, "invalid sleep duration `{value}`")
+            }
             Self::InvalidIntegerOperand(value) => {
                 write!(formatter, "expected integer operand, got `{value}`")
             }
@@ -1140,6 +1238,20 @@ fn ic10_mod(left: f64, right: f64) -> f64 {
 
 const fn bool_to_number(value: bool) -> f64 {
     if value { 1.0 } else { 0.0 }
+}
+
+fn sleep_ticks(duration_seconds: f64) -> Result<u64, Ic10Fault> {
+    if !duration_seconds.is_finite() || duration_seconds < 0.0 {
+        return Err(Ic10Fault::InvalidSleepDuration(duration_seconds));
+    }
+
+    let ticks = (duration_seconds * SIM_TICKS_PER_SECOND).ceil();
+    if !ticks.is_finite() || ticks >= U64_MAX_EXCLUSIVE_AS_F64 {
+        return Err(Ic10Fault::InvalidSleepDuration(duration_seconds));
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Ok(ticks as u64)
 }
 
 #[allow(clippy::float_cmp)]

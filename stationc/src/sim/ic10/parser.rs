@@ -274,7 +274,7 @@ fn parse_instruction(
     context: ParseContext<'_>,
 ) -> Result<Instruction, ParseError> {
     match tokens[0] {
-        "yield" | "hcf" => parse_control_instruction(tokens, context),
+        "yield" | "sleep" | "hcf" => parse_control_instruction(tokens, context),
         "move" | "rand" | "select" => parse_register_instruction(tokens, context),
         "push" | "pop" | "peek" | "poke" => parse_local_stack_instruction(tokens, context),
         "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
@@ -295,10 +295,21 @@ fn parse_control_instruction(
     tokens: &[&str],
     context: ParseContext<'_>,
 ) -> Result<Instruction, ParseError> {
-    require_len(tokens, 1, context.line_number)?;
     match tokens[0] {
-        "yield" => Ok(Instruction::Yield),
-        "hcf" => Ok(Instruction::Hcf),
+        "yield" => {
+            require_len(tokens, 1, context.line_number)?;
+            Ok(Instruction::Yield)
+        }
+        "sleep" => {
+            require_len(tokens, 2, context.line_number)?;
+            Ok(Instruction::Sleep {
+                duration: parse_value(tokens[1], context),
+            })
+        }
+        "hcf" => {
+            require_len(tokens, 1, context.line_number)?;
+            Ok(Instruction::Hcf)
+        }
         mnemonic => unsupported_instruction(mnemonic, context.line_number),
     }
 }

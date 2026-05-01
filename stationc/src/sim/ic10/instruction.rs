@@ -17,6 +17,9 @@ pub(super) struct ProgramInstruction {
 #[derive(Debug, Clone)]
 pub(super) enum Instruction {
     Yield,
+    Sleep {
+        duration: ValueOperand,
+    },
     Hcf,
     Move {
         destination: RegisterRef,
