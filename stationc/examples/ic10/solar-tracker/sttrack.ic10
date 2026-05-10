@@ -1,0 +1,31 @@
+define SensorType 1076425094
+define PanelType HASH("StructureSolarPanel")
+define PanelDualType HASH("StructureSolarPanelDual")
+define SensorName HASH("STDLSNSR")
+define PanelName HASH("STSP")
+define HorizontalOffset 0
+define VerticalOffset 90
+define VerticalMin 15
+define VerticalMax 165
+main:
+lbn r0 SensorType SensorName ReferenceId Maximum
+ble r0 ninf no_sensor
+lbn r1 SensorType SensorName Horizontal Maximum
+lbn r2 SensorType SensorName Vertical Maximum
+add r1 r1 HorizontalOffset
+add r2 r2 VerticalOffset
+max r2 r2 VerticalMin
+min r2 r2 VerticalMax
+sbn PanelType PanelName Horizontal r1
+sbn PanelDualType PanelName Horizontal r1
+sbn PanelType PanelName Vertical r2
+sbn PanelDualType PanelName Vertical r2
+sbn PanelType PanelName On 1
+sbn PanelDualType PanelName On 1
+s db Setting r2
+yield
+j main
+no_sensor:
+s db Setting -1
+yield
+j main
