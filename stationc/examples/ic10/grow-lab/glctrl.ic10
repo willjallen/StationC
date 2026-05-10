@@ -1,0 +1,22 @@
+define SensorType 1076425094
+define HydroType 1441767298
+define SensorName HASH("GLDLSNSR")
+define HydroName HASH("GLHPSTN")
+define DayMinutes 20
+define LightMinutes 12.5
+main:
+sbn SensorType SensorName Mode 0
+lbn r0 SensorType SensorName ReferenceId Maximum
+sgtz r0 r0
+lbn r1 SensorType SensorName SolarAngle Maximum
+lbn r2 SensorType SensorName Activate Maximum
+sgtz r2 r2
+mul r3 LightMinutes 180
+div r3 r3 DayMinutes
+slt r4 r1 r3
+seqz r5 r2
+and r6 r4 r5
+and r6 r6 r0
+sbn HydroType HydroName On r6
+yield
+j main
