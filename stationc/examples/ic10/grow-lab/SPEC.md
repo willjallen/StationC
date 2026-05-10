@@ -25,7 +25,7 @@ expression used by the script.
 
 | label | prefab | hash | role | fields used |
 | --- | --- | --- | --- | --- |
-| GLDLSNSR | StructureDaylightSensor | 1076425094 | upward-facing daylight sensor | Mode, Activate, SolarAngle, ReferenceId |
+| GLDLSNSR | StructureDaylightSensor | 1076425094 | upward-facing daylight sensor | Mode, SolarAngle, ReferenceId |
 
 ## Controlled Devices
 
@@ -46,14 +46,26 @@ midnight. Compass rotation and connector direction are not part of the contract.
 Wall-mounted, ceiling-mounted, horizontal-mode, and vertical-mode sensors are
 not supported.
 
+## Crop Contract
+
+This grow lab is for soybeans and potatoes in the same room.
+
+| crop | light per day | darkness per day |
+| --- | --- | --- |
+| Soybean | 10 min | 5 min |
+| Potato | 5 min | 3 min 20 s |
+
+Soybeans are the stricter crop, so the default schedule keeps at least 10
+minutes of light and 5 minutes of darkness.
+
 ## Light Rules
 
-The default constants target Mars-like timing:
+The default constants target the normal Stationeers 20-minute solar cycle:
 
 | name | value | behavior |
 | --- | --- | --- |
 | DayMinutes | 20 | full light/dark cycle length |
-| LightMinutes | 12.5 | target total crop light per cycle |
+| LightMinutes | 12.5 | grow-light-on portion of each cycle |
 
 The script computes:
 
@@ -63,9 +75,12 @@ LightAngle = 180 * LightMinutes / DayMinutes
 
 With the defaults, `LightAngle = 112.5`.
 
-Because the crops are under a window, natural daylight counts as crop light.
-When `GLDLSNSR.Activate > 0`, hydroponics station lights are off. When the
-sensor is dark but `GLDLSNSR.SolarAngle < LightAngle`, all `GLHPSTN`
-hydroponics stations are turned on to supplement the light window. When
-`SolarAngle >= LightAngle`, all `GLHPSTN` hydroponics stations are turned off
-to preserve the dark period.
+Because the crops are under a window, natural daylight is allowed to supplement
+the grow lights. `GLCTRL` does not subtract daylight from the grow-light window:
+the `GLHPSTN` lights are on whenever `GLDLSNSR.SolarAngle < LightAngle`, and
+off whenever `SolarAngle >= LightAngle`. This favors reliable soybean light
+coverage over power savings.
+
+No window attenuation multiplier is modeled. We do not have a reliable game
+contract for one, so the script only uses the upward daylight sensor as a cycle
+clock.

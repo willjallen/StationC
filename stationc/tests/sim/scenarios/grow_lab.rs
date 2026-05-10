@@ -19,13 +19,13 @@ fn grow_lab_script_fits_ic10_editor_limits() -> TestResult {
 }
 
 #[test]
-fn grow_lab_leaves_station_lights_off_during_window_daylight() -> TestResult {
+fn grow_lab_runs_station_lights_during_window_daylight() -> TestResult {
     let (mut world, ids) = mock_grow_lab(45.0, true, GLCTRL)?;
 
     world.tick()?;
 
     assert_device_logic(&world, ids.sensor, "Mode", 0.0)?;
-    assert_matching_stations(&world, &ids, 0.0)?;
+    assert_matching_stations(&world, &ids, 1.0)?;
     assert_device_logic(&world, ids.other_named_station, "On", 0.0)?;
     assert_device_logic(&world, ids.other_type_same_name, "On", 0.0)
 }
@@ -51,6 +51,66 @@ fn grow_lab_preserves_dark_rest_outside_light_window() -> TestResult {
 }
 
 #[test]
+fn grow_lab_turns_lights_off_at_light_window_boundary() -> TestResult {
+    let (mut world, ids) = mock_grow_lab(112.5, false, GLCTRL)?;
+
+    world.tick()?;
+
+    assert_matching_stations(&world, &ids, 0.0)
+}
+
+#[test]
+fn grow_lab_pins_default_light_window_edges() -> TestResult {
+    assert_angle_controls_lights(0.0, GLCTRL, 1.0)?;
+    assert_angle_controls_lights(90.0, GLCTRL, 1.0)?;
+    assert_angle_controls_lights(112.49, GLCTRL, 1.0)?;
+    assert_angle_controls_lights(112.5, GLCTRL, 0.0)?;
+    assert_angle_controls_lights(112.51, GLCTRL, 0.0)?;
+    assert_angle_controls_lights(180.0, GLCTRL, 0.0)
+}
+
+#[test]
+fn grow_lab_updates_outputs_when_solar_angle_changes() -> TestResult {
+    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL)?;
+
+    world.tick()?;
+    assert_matching_stations(&world, &ids, 1.0)?;
+
+    set_device_logic(&mut world, ids.sensor, "SolarAngle", 130.0)?;
+    world.tick()?;
+    assert_matching_stations(&world, &ids, 0.0)?;
+
+    set_device_logic(&mut world, ids.sensor, "SolarAngle", 0.0)?;
+    world.tick()?;
+    assert_matching_stations(&world, &ids, 1.0)
+}
+
+#[test]
+fn grow_lab_batch_write_overrides_mixed_station_states() -> TestResult {
+    let (mut world, ids) = mock_grow_lab(130.0, false, GLCTRL)?;
+    set_device_logic(&mut world, ids.matching_stations[0], "On", 0.0)?;
+    set_device_logic(&mut world, ids.matching_stations[1], "On", 1.0)?;
+
+    world.tick()?;
+
+    assert_matching_stations(&world, &ids, 0.0)?;
+
+    set_device_logic(&mut world, ids.sensor, "SolarAngle", 100.0)?;
+    world.tick()?;
+
+    assert_matching_stations(&world, &ids, 1.0)
+}
+
+#[test]
+fn grow_lab_ignores_activate_when_enforcing_dark_rest() -> TestResult {
+    let (mut world, ids) = mock_grow_lab(130.0, true, GLCTRL)?;
+
+    world.tick()?;
+
+    assert_matching_stations(&world, &ids, 0.0)
+}
+
+#[test]
 fn grow_lab_keeps_lights_off_without_the_named_daylight_sensor() -> TestResult {
     let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL)?;
     set_device_name(&mut world, ids.sensor, "GLDLSNSR_WRONG")?;
@@ -61,9 +121,9 @@ fn grow_lab_keeps_lights_off_without_the_named_daylight_sensor() -> TestResult {
 }
 
 #[test]
-fn grow_lab_light_window_constants_are_configurable() -> TestResult {
-    let short_light_source = GLCTRL.replace("define LightMinutes 12.5", "define LightMinutes 10");
-    let (mut world, ids) = mock_grow_lab(100.0, false, &short_light_source)?;
+fn grow_lab_keeps_lights_off_with_wrong_sensor_type() -> TestResult {
+    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL)?;
+    set_device_prefab(&mut world, ids.sensor, LED_TYPE)?;
 
     world.tick()?;
 
@@ -71,13 +131,19 @@ fn grow_lab_light_window_constants_are_configurable() -> TestResult {
 }
 
 #[test]
+fn grow_lab_light_window_constants_are_configurable() -> TestResult {
+    let short_light_source = GLCTRL.replace("define LightMinutes 12.5", "define LightMinutes 10");
+
+    assert_angle_controls_lights(89.99, &short_light_source, 1.0)?;
+    assert_angle_controls_lights(90.0, &short_light_source, 0.0)
+}
+
+#[test]
 fn grow_lab_day_cycle_constant_is_configurable() -> TestResult {
     let long_day_source = GLCTRL.replace("define DayMinutes 20", "define DayMinutes 25");
-    let (mut world, ids) = mock_grow_lab(100.0, false, &long_day_source)?;
 
-    world.tick()?;
-
-    assert_matching_stations(&world, &ids, 0.0)
+    assert_angle_controls_lights(89.99, &long_day_source, 1.0)?;
+    assert_angle_controls_lights(90.0, &long_day_source, 0.0)
 }
 
 struct MockIds {
@@ -127,6 +193,14 @@ fn assert_matching_stations(world: &World, ids: &MockIds, expected: f64) -> Test
     Ok(())
 }
 
+fn assert_angle_controls_lights(solar_angle: f64, source: &str, expected: f64) -> TestResult {
+    let (mut world, ids) = mock_grow_lab(solar_angle, false, source)?;
+
+    world.tick()?;
+
+    assert_matching_stations(&world, &ids, expected)
+}
+
 fn assert_script_limits(name: &str, source: &str) -> TestResult {
     let line_count = source.lines().count();
     if line_count > 128 {
@@ -167,6 +241,27 @@ fn set_device_name(world: &mut World, reference_id: ReferenceId, name: &str) -> 
         .device_mut(reference_id)
         .ok_or_else(|| test_error(format!("missing device {}", reference_id.value())))?;
     device.set_name_hash(hash(name));
+    Ok(())
+}
+
+fn set_device_prefab(world: &mut World, reference_id: ReferenceId, prefab_hash: f64) -> TestResult {
+    let device = world
+        .device_mut(reference_id)
+        .ok_or_else(|| test_error(format!("missing device {}", reference_id.value())))?;
+    device.set_prefab_hash(prefab_hash);
+    Ok(())
+}
+
+fn set_device_logic(
+    world: &mut World,
+    reference_id: ReferenceId,
+    field: &str,
+    value: f64,
+) -> TestResult {
+    let device = world
+        .device_mut(reference_id)
+        .ok_or_else(|| test_error(format!("missing device {}", reference_id.value())))?;
+    device.set_logic(field, value);
     Ok(())
 }
 
