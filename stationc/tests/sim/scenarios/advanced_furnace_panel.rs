@@ -7,10 +7,10 @@ use stationc::sim::{
 
 type TestResult<T = ()> = Result<T, Box<dyn StdError>>;
 
-const AFCTRL: &str = include_str!("../../../examples/ic10/advanced-furnace/afctrl.ic10");
-const AFSAFETY: &str = include_str!("../../../examples/ic10/advanced-furnace/afsafety.ic10");
-const AFVIZLED: &str = include_str!("../../../examples/ic10/advanced-furnace/afvizled.ic10");
-const AFVIZNUM: &str = include_str!("../../../examples/ic10/advanced-furnace/afviznum.ic10");
+const AFCTRL_SRC: &str = include_str!("../../../examples/ic10/advanced-furnace/afctrl.ic10");
+const AFSAFETY_SRC: &str = include_str!("../../../examples/ic10/advanced-furnace/afsafety.ic10");
+const AFVIZLED_SRC: &str = include_str!("../../../examples/ic10/advanced-furnace/afvizled.ic10");
+const AFVIZNUM_SRC: &str = include_str!("../../../examples/ic10/advanced-furnace/afviznum.ic10");
 
 const FURNACE_TYPE: f64 = 545_937_711.0;
 const BUTTON_TYPE: f64 = 491_845_673.0;
@@ -29,10 +29,10 @@ const RESET_PRESSURE: f64 = 120_000.0;
 
 #[test]
 fn advanced_furnace_panel_scripts_fit_ic10_editor_limits() -> TestResult {
-    assert_script_limits("afctrl", AFCTRL)?;
-    assert_script_limits("afsafety", AFSAFETY)?;
-    assert_script_limits("afvizled", AFVIZLED)?;
-    assert_script_limits("afviznum", AFVIZNUM)
+    assert_script_limits("afctrl", AFCTRL_SRC)?;
+    assert_script_limits("afsafety", AFSAFETY_SRC)?;
+    assert_script_limits("afvizled", AFVIZLED_SRC)?;
+    assert_script_limits("afviznum", AFVIZNUM_SRC)
 }
 
 #[test]
@@ -414,14 +414,14 @@ fn mock_panel_world(controls: Controls, reagents: &[MockReagent]) -> TestResult<
     let kit_room_light =
         world.add_device(named_device(KIT_LIGHT_TYPE, "AFLIGHT2").with_logic("On", 1.0));
 
-    let ctrl_housing = world.add_ic10_housing(AFCTRL)?;
-    let safety_housing = world.add_ic10_housing(AFSAFETY)?;
-    let viz_led_housing = world.add_ic10_housing(AFVIZLED)?;
-    let viz_num_housing = world.add_ic10_housing(AFVIZNUM)?;
-    set_housing_identity(&mut world, ctrl_housing, "AFCTRL")?;
-    set_housing_identity(&mut world, safety_housing, "AFSAFETY")?;
-    set_housing_identity(&mut world, viz_led_housing, "AFVIZLED")?;
-    set_housing_identity(&mut world, viz_num_housing, "AFVIZNUM")?;
+    let ctrl_housing = world.add_ic10_housing(AFCTRL_SRC)?;
+    let safety_housing = world.add_ic10_housing(AFSAFETY_SRC)?;
+    let viz_led_housing = world.add_ic10_housing(AFVIZLED_SRC)?;
+    let viz_num_housing = world.add_ic10_housing(AFVIZNUM_SRC)?;
+    set_housing_identity(&mut world, ctrl_housing, "AFCTRLIC")?;
+    set_housing_identity(&mut world, safety_housing, "AFSAFETYIC")?;
+    set_housing_identity(&mut world, viz_led_housing, "AFVIZLEDIC")?;
+    set_housing_identity(&mut world, viz_num_housing, "AFVIZNUMIC")?;
 
     Ok((
         world,

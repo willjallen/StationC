@@ -7,7 +7,7 @@ use stationc::sim::{
 
 type TestResult<T = ()> = Result<T, Box<dyn StdError>>;
 
-const GLCTRL: &str = include_str!("../../../examples/ic10/grow-lab/glctrl.ic10");
+const GLCTRL_SRC: &str = include_str!("../../../examples/ic10/grow-lab/glctrl.ic10");
 
 const SENSOR_TYPE: f64 = 1_076_425_094.0;
 const HYDROPONICS_TYPE: f64 = 1_441_767_298.0;
@@ -15,12 +15,12 @@ const LED_TYPE: f64 = 1_944_485_013.0;
 
 #[test]
 fn grow_lab_script_fits_ic10_editor_limits() -> TestResult {
-    assert_script_limits("glctrl", GLCTRL)
+    assert_script_limits("glctrl", GLCTRL_SRC)
 }
 
 #[test]
 fn grow_lab_runs_station_lights_during_window_daylight() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(45.0, true, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(45.0, true, GLCTRL_SRC)?;
 
     world.tick()?;
 
@@ -32,7 +32,7 @@ fn grow_lab_runs_station_lights_during_window_daylight() -> TestResult {
 
 #[test]
 fn grow_lab_supplements_light_near_night_edges() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL_SRC)?;
 
     world.tick()?;
 
@@ -43,7 +43,7 @@ fn grow_lab_supplements_light_near_night_edges() -> TestResult {
 
 #[test]
 fn grow_lab_preserves_dark_rest_outside_light_window() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(130.0, false, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(130.0, false, GLCTRL_SRC)?;
 
     world.tick()?;
 
@@ -52,7 +52,7 @@ fn grow_lab_preserves_dark_rest_outside_light_window() -> TestResult {
 
 #[test]
 fn grow_lab_turns_lights_off_at_light_window_boundary() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(112.5, false, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(112.5, false, GLCTRL_SRC)?;
 
     world.tick()?;
 
@@ -61,17 +61,17 @@ fn grow_lab_turns_lights_off_at_light_window_boundary() -> TestResult {
 
 #[test]
 fn grow_lab_pins_default_light_window_edges() -> TestResult {
-    assert_angle_controls_lights(0.0, GLCTRL, 1.0)?;
-    assert_angle_controls_lights(90.0, GLCTRL, 1.0)?;
-    assert_angle_controls_lights(112.49, GLCTRL, 1.0)?;
-    assert_angle_controls_lights(112.5, GLCTRL, 0.0)?;
-    assert_angle_controls_lights(112.51, GLCTRL, 0.0)?;
-    assert_angle_controls_lights(180.0, GLCTRL, 0.0)
+    assert_angle_controls_lights(0.0, GLCTRL_SRC, 1.0)?;
+    assert_angle_controls_lights(90.0, GLCTRL_SRC, 1.0)?;
+    assert_angle_controls_lights(112.49, GLCTRL_SRC, 1.0)?;
+    assert_angle_controls_lights(112.5, GLCTRL_SRC, 0.0)?;
+    assert_angle_controls_lights(112.51, GLCTRL_SRC, 0.0)?;
+    assert_angle_controls_lights(180.0, GLCTRL_SRC, 0.0)
 }
 
 #[test]
 fn grow_lab_updates_outputs_when_solar_angle_changes() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL_SRC)?;
 
     world.tick()?;
     assert_matching_stations(&world, &ids, 1.0)?;
@@ -87,7 +87,7 @@ fn grow_lab_updates_outputs_when_solar_angle_changes() -> TestResult {
 
 #[test]
 fn grow_lab_batch_write_overrides_mixed_station_states() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(130.0, false, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(130.0, false, GLCTRL_SRC)?;
     set_device_logic(&mut world, ids.matching_stations[0], "On", 0.0)?;
     set_device_logic(&mut world, ids.matching_stations[1], "On", 1.0)?;
 
@@ -103,7 +103,7 @@ fn grow_lab_batch_write_overrides_mixed_station_states() -> TestResult {
 
 #[test]
 fn grow_lab_ignores_activate_when_enforcing_dark_rest() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(130.0, true, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(130.0, true, GLCTRL_SRC)?;
 
     world.tick()?;
 
@@ -112,7 +112,7 @@ fn grow_lab_ignores_activate_when_enforcing_dark_rest() -> TestResult {
 
 #[test]
 fn grow_lab_keeps_lights_off_without_the_named_daylight_sensor() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL_SRC)?;
     set_device_name(&mut world, ids.sensor, "GLDLSNSR_WRONG")?;
 
     world.tick()?;
@@ -122,7 +122,7 @@ fn grow_lab_keeps_lights_off_without_the_named_daylight_sensor() -> TestResult {
 
 #[test]
 fn grow_lab_keeps_lights_off_with_wrong_sensor_type() -> TestResult {
-    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL)?;
+    let (mut world, ids) = mock_grow_lab(100.0, false, GLCTRL_SRC)?;
     set_device_prefab(&mut world, ids.sensor, LED_TYPE)?;
 
     world.tick()?;
@@ -132,7 +132,8 @@ fn grow_lab_keeps_lights_off_with_wrong_sensor_type() -> TestResult {
 
 #[test]
 fn grow_lab_light_window_constants_are_configurable() -> TestResult {
-    let short_light_source = GLCTRL.replace("define LightMinutes 12.5", "define LightMinutes 10");
+    let short_light_source =
+        GLCTRL_SRC.replace("define LightMinutes 12.5", "define LightMinutes 10");
 
     assert_angle_controls_lights(89.99, &short_light_source, 1.0)?;
     assert_angle_controls_lights(90.0, &short_light_source, 0.0)
@@ -140,7 +141,7 @@ fn grow_lab_light_window_constants_are_configurable() -> TestResult {
 
 #[test]
 fn grow_lab_day_cycle_constant_is_configurable() -> TestResult {
-    let long_day_source = GLCTRL.replace("define DayMinutes 20", "define DayMinutes 25");
+    let long_day_source = GLCTRL_SRC.replace("define DayMinutes 20", "define DayMinutes 25");
 
     assert_angle_controls_lights(89.99, &long_day_source, 1.0)?;
     assert_angle_controls_lights(90.0, &long_day_source, 0.0)

@@ -10,7 +10,7 @@ define ResetButtonName HASH("AFSFTRST")
 define TestButtonName HASH("AFSFTTST")
 define TripLedName HASH("AFTRIP")
 define AlertName HASH("AFSFTALRT")
-define CtrlName HASH("AFCTRL")
+define CtrlName HASH("AFCTRLIC")
 define MaxTemperature 2273
 define MaxPressure 180000
 define ResetTemperature 2073

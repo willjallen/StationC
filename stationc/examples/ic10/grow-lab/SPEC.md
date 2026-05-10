@@ -19,7 +19,7 @@ expression used by the script.
 
 | label | prefab | hash | role | fields used |
 | --- | --- | --- | --- | --- |
-| GLCTRL | StructureCircuitHousing | -128473777 | grow lab light IC housing | self only; never written |
+| GLCTRLIC | StructureCircuitHousing | -128473777 | grow lab light IC housing | self only; never written |
 
 ## Inputs
 
@@ -76,7 +76,7 @@ LightAngle = 180 * LightMinutes / DayMinutes
 With the defaults, `LightAngle = 112.5`.
 
 Because the crops are under a window, natural daylight is allowed to supplement
-the grow lights. `GLCTRL` does not subtract daylight from the grow-light window:
+the grow lights. `GLCTRLIC` does not subtract daylight from the grow-light window:
 the `GLHPSTN` lights are on whenever `GLDLSNSR.SolarAngle < LightAngle`, and
 off whenever `SolarAngle >= LightAngle`. This favors reliable soybean light
 coverage over power savings.
