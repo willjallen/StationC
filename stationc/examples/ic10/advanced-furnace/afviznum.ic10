@@ -1,7 +1,5 @@
 define FurnaceType 545937711
-define SmallDisplayType HASH("StructureConsoleLED5")
-define MediumDisplayType HASH("StructureConsoleLED1x2")
-define LargeDisplayType HASH("StructureConsoleLED1x3")
+define DisplayType HASH("StructureConsoleLED1x2")
 define FurnaceName HASH("AF")
 main:
 lbn r11 FurnaceType FurnaceName ReferenceId Maximum
@@ -109,13 +107,7 @@ j ra
 write_quantity:
 sgtz r15 r9
 write_display:
-sbn SmallDisplayType r8 On r15
-sbn MediumDisplayType r8 On r15
-sbn LargeDisplayType r8 On r15
-sbn SmallDisplayType r8 Setting r9
-sbn MediumDisplayType r8 Setting r9
-sbn LargeDisplayType r8 Setting r9
-sbn SmallDisplayType r8 Mode r10
-sbn MediumDisplayType r8 Mode r10
-sbn LargeDisplayType r8 Mode r10
+sbn DisplayType r8 On r15
+sbn DisplayType r8 Setting r9
+sbn DisplayType r8 Mode r10
 j ra

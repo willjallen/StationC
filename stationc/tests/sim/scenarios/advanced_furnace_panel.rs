@@ -14,6 +14,7 @@ const AFVIZNUM: &str = include_str!("../../../examples/ic10/advanced-furnace/afv
 const FURNACE_TYPE: f64 = 545_937_711.0;
 const BUTTON_TYPE: f64 = 491_845_673.0;
 const LEVER_TYPE: f64 = 1_220_484_876.0;
+const SWITCH_TYPE: f64 = 321_604_921.0;
 const DIAL_TYPE: f64 = 554_524_804.0;
 const HOUSING_TYPE: f64 = -128_473_777.0;
 const LED_TYPE: f64 = 1_944_485_013.0;
@@ -27,10 +28,16 @@ fn advanced_furnace_panel_scripts_fit_ic10_editor_limits() -> TestResult {
 }
 
 #[test]
-fn advanced_furnace_panel_mock_turns_on_and_displays_reagents() -> TestResult {
-    let (mut world, ids) = mock_panel_world(true)?;
+fn advanced_furnace_panel_displays_four_reagent_rows() -> TestResult {
+    let reagents = [
+        MockReagent::new("Iron", 49.0),
+        MockReagent::new("Copper", 12.0),
+        MockReagent::new("Cobalt", 7.0),
+        MockReagent::new("Silicon", 3.0),
+    ];
+    let (mut world, ids) = mock_panel_world(Controls::all_on(), &reagents)?;
 
-    world.tick_with_budget(1_000)?;
+    tick_panel_cycle(&mut world)?;
 
     assert_device_logic(&world, ids.furnace, "On", 1.0)?;
     assert_device_logic(&world, ids.furnace, "Activate", 1.0)?;
@@ -40,29 +47,74 @@ fn advanced_furnace_panel_mock_turns_on_and_displays_reagents() -> TestResult {
     assert_device_logic(&world, ids.vent, "On", 1.0)?;
     assert_housing_logic(housing(&world, ids.viz_led_housing)?, "On", 1.0)?;
     assert_housing_logic(housing(&world, ids.viz_num_housing)?, "On", 1.0)?;
-    assert_device_logic(&world, ids.panel_led_one, "On", 1.0)?;
-    assert_device_logic(&world, ids.panel_led_one, "Color", 4.0)?;
-    assert_device_logic(&world, ids.panel_led_two, "On", 0.0)?;
-    assert_device_logic(&world, ids.quantity_one, "On", 1.0)?;
-    assert_device_logic(&world, ids.quantity_one, "Setting", 49.0)?;
-    assert_device_logic(&world, ids.quantity_one, "Mode", 0.0)?;
-    assert_device_logic(&world, ids.quantity_two, "On", 0.0)?;
-    assert_device_logic(&world, ids.temperature, "On", 1.0)?;
-    assert_device_logic(&world, ids.temperature, "Setting", 1873.0)?;
-    assert_device_logic(&world, ids.temperature, "Mode", 3.0)?;
-    assert_device_logic(&world, ids.pressure, "Setting", 123_456.0)?;
-    assert_device_logic(&world, ids.pressure, "Mode", 14.0)?;
-    assert_device_logic(&world, ids.input, "Setting", 27.0)?;
-    assert_device_logic(&world, ids.output, "Setting", 8.0)?;
+    assert_reagent_row(&world, &ids, 0, 49.0, 4.0)?;
+    assert_reagent_row(&world, &ids, 1, 12.0, 3.0)?;
+    assert_reagent_row(&world, &ids, 2, 7.0, 0.0)?;
+    assert_reagent_row(&world, &ids, 3, 3.0, 9.0)?;
+    assert_status_displays(&world, &ids)?;
+    assert_device_logic(&world, ids.led_room_light, "On", 1.0)?;
+    assert_device_logic(&world, ids.kit_room_light, "On", 1.0)
+}
+
+#[test]
+fn advanced_furnace_panel_displays_partial_reagent_rows() -> TestResult {
+    assert_reagent_layout(
+        &[
+            MockReagent::new("Iron", 49.0),
+            MockReagent::new("Carbon", 5.0),
+        ],
+        &[(49.0, 4.0), (5.0, 8.0)],
+    )?;
+    assert_reagent_layout(
+        &[
+            MockReagent::new("Hydrocarbon", 2.0),
+            MockReagent::new("Nickel", 3.0),
+            MockReagent::new("Silver", 4.0),
+        ],
+        &[(2.0, 7.0), (3.0, 2.0), (4.0, 6.0)],
+    )
+}
+
+#[test]
+fn advanced_furnace_panel_master_on_respects_released_controls() -> TestResult {
+    let controls = Controls {
+        master_on: true,
+        activate: false,
+        mold_open: false,
+        vent_on: false,
+    };
+    let reagents = [MockReagent::new("Iron", 49.0)];
+    let (mut world, ids) = mock_panel_world(controls, &reagents)?;
+
+    tick_panel_cycle(&mut world)?;
+
+    assert_device_logic(&world, ids.furnace, "On", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "Activate", 0.0)?;
+    assert_device_logic(&world, ids.furnace, "Open", 0.0)?;
+    assert_device_logic(&world, ids.vent, "On", 0.0)?;
+    assert_housing_logic(housing(&world, ids.viz_led_housing)?, "On", 1.0)?;
+    assert_housing_logic(housing(&world, ids.viz_num_housing)?, "On", 1.0)?;
+    assert_reagent_row(&world, &ids, 0, 49.0, 4.0)?;
+    assert_empty_row(&world, &ids, 1)?;
     assert_device_logic(&world, ids.led_room_light, "On", 1.0)?;
     assert_device_logic(&world, ids.kit_room_light, "On", 1.0)
 }
 
 #[test]
 fn advanced_furnace_panel_mock_master_off_shuts_outputs_down() -> TestResult {
-    let (mut world, ids) = mock_panel_world(false)?;
+    let reagents = [
+        MockReagent::new("Iron", 49.0),
+        MockReagent::new("Copper", 12.0),
+        MockReagent::new("Cobalt", 7.0),
+        MockReagent::new("Silicon", 3.0),
+    ];
+    let controls = Controls {
+        master_on: false,
+        ..Controls::all_on()
+    };
+    let (mut world, ids) = mock_panel_world(controls, &reagents)?;
 
-    world.tick_with_budget(1_000)?;
+    tick_panel_cycle(&mut world)?;
 
     assert_named_device_logic(&world, ids.furnace, "AF", "On", 0.0)?;
     assert_named_device_logic(&world, ids.furnace, "AF", "Activate", 0.0)?;
@@ -72,24 +124,51 @@ fn advanced_furnace_panel_mock_master_off_shuts_outputs_down() -> TestResult {
     assert_named_device_logic(&world, ids.vent, "AFVNT", "On", 0.0)?;
     assert_housing_logic(housing(&world, ids.viz_led_housing)?, "On", 0.0)?;
     assert_housing_logic(housing(&world, ids.viz_num_housing)?, "On", 0.0)?;
-    assert_named_device_logic(&world, ids.panel_led_one, "AF1L", "On", 0.0)?;
-    assert_named_device_logic(&world, ids.quantity_one, "AF1Q", "On", 0.0)?;
-    assert_named_device_logic(&world, ids.temperature, "AFT", "On", 0.0)?;
-    assert_named_device_logic(&world, ids.pressure, "AFP", "On", 0.0)?;
-    assert_named_device_logic(&world, ids.input, "AFIN", "On", 0.0)?;
-    assert_named_device_logic(&world, ids.output, "AFOUT", "On", 0.0)?;
+    for row in 0..4 {
+        assert_empty_row(&world, &ids, row)?;
+    }
+    assert_status_displays_off(&world, &ids)?;
     assert_named_device_logic(&world, ids.led_room_light, "AFLIGHT", "On", 0.0)?;
     assert_named_device_logic(&world, ids.kit_room_light, "AFLIGHT2", "On", 0.0)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Controls {
+    master_on: bool,
+    activate: bool,
+    mold_open: bool,
+    vent_on: bool,
+}
+
+impl Controls {
+    const fn all_on() -> Self {
+        Self {
+            master_on: true,
+            activate: true,
+            mold_open: true,
+            vent_on: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MockReagent {
+    name: &'static str,
+    amount: f64,
+}
+
+impl MockReagent {
+    const fn new(name: &'static str, amount: f64) -> Self {
+        Self { name, amount }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct MockIds {
     furnace: ReferenceId,
     vent: ReferenceId,
-    panel_led_one: ReferenceId,
-    panel_led_two: ReferenceId,
-    quantity_one: ReferenceId,
-    quantity_two: ReferenceId,
+    reagent_leds: [ReferenceId; 4],
+    quantity_displays: [ReferenceId; 4],
     temperature: ReferenceId,
     pressure: ReferenceId,
     input: ReferenceId,
@@ -100,39 +179,51 @@ struct MockIds {
     viz_num_housing: ReferenceId,
 }
 
-fn mock_panel_world(master_on: bool) -> TestResult<(World, MockIds)> {
+fn mock_panel_world(controls: Controls, reagents: &[MockReagent]) -> TestResult<(World, MockIds)> {
     let mut world = World::new();
-    let furnace = world.add_device(
-        named_device(FURNACE_TYPE, "AF")
-            .with_logic("On", 1.0)
-            .with_logic("Activate", 1.0)
-            .with_logic("Open", 1.0)
-            .with_logic("SettingInput", 0.0)
-            .with_logic("SettingOutput", 0.0)
-            .with_logic("Temperature", 1873.0)
-            .with_logic("Pressure", 123_456.0)
-            .with_reagent(ReagentMode::Contents, hash("Iron"), 49.0),
+    let mut furnace_device = named_device(FURNACE_TYPE, "AF")
+        .with_logic("On", 1.0)
+        .with_logic("Activate", 1.0)
+        .with_logic("Open", 1.0)
+        .with_logic("SettingInput", 0.0)
+        .with_logic("SettingOutput", 0.0)
+        .with_logic("Temperature", 1873.0)
+        .with_logic("Pressure", 123_456.0);
+    for reagent in reagents {
+        furnace_device.set_reagent(ReagentMode::Contents, hash(reagent.name), reagent.amount);
+    }
+    let furnace = world.add_device(furnace_device);
+    world.add_device(
+        named_device(SWITCH_TYPE, "AFMASTER")
+            .with_logic("Open", number_from_bool(controls.master_on)),
     );
     world.add_device(
-        named_device(LEVER_TYPE, "AFMASTER").with_logic("Open", if master_on { 1.0 } else { 0.0 }),
+        named_device(BUTTON_TYPE, "AFACT")
+            .with_logic("Activate", number_from_bool(controls.activate)),
     );
-    world.add_device(named_device(BUTTON_TYPE, "AFACT").with_logic("Activate", 1.0));
-    world.add_device(named_device(LEVER_TYPE, "AFMOLD").with_logic("Open", 1.0));
-    world.add_device(named_device(LEVER_TYPE, "AFVNTL").with_logic("Open", 1.0));
+    world.add_device(
+        named_device(LEVER_TYPE, "AFMOLD").with_logic("Open", number_from_bool(controls.mold_open)),
+    );
+    world.add_device(
+        named_device(LEVER_TYPE, "AFVNTL").with_logic("Open", number_from_bool(controls.vent_on)),
+    );
     world.add_device(named_device(DIAL_TYPE, "AFGIN").with_logic("Setting", 27.0));
     world.add_device(named_device(DIAL_TYPE, "AFGOUT").with_logic("Setting", 8.0));
     let vent =
         world.add_device(named_device(hash("StructureActiveVent"), "AFVNT").with_logic("On", 1.0));
 
-    let panel_led_one = world.add_device(reagent_led("AF1L", 1.0));
-    let panel_led_two = world.add_device(reagent_led("AF2L", 1.0));
-    world.add_device(reagent_led("AF3L", 1.0));
-    world.add_device(reagent_led("AF4L", 1.0));
-
-    let quantity_one = world.add_device(display("AF1Q", 1.0));
-    let quantity_two = world.add_device(display("AF2Q", 1.0));
-    world.add_device(display("AF3Q", 1.0));
-    world.add_device(display("AF4Q", 1.0));
+    let reagent_leds = [
+        world.add_device(reagent_led("AF1L", 1.0)),
+        world.add_device(reagent_led("AF2L", 1.0)),
+        world.add_device(reagent_led("AF3L", 1.0)),
+        world.add_device(reagent_led("AF4L", 1.0)),
+    ];
+    let quantity_displays = [
+        world.add_device(display("AF1Q", 1.0)),
+        world.add_device(display("AF2Q", 1.0)),
+        world.add_device(display("AF3Q", 1.0)),
+        world.add_device(display("AF4Q", 1.0)),
+    ];
     let temperature = world.add_device(display("AFT", 1.0));
     let pressure = world.add_device(display("AFP", 1.0));
     let input = world.add_device(display("AFIN", 1.0));
@@ -153,10 +244,8 @@ fn mock_panel_world(master_on: bool) -> TestResult<(World, MockIds)> {
         MockIds {
             furnace,
             vent,
-            panel_led_one,
-            panel_led_two,
-            quantity_one,
-            quantity_two,
+            reagent_leds,
+            quantity_displays,
             temperature,
             pressure,
             input,
@@ -167,6 +256,67 @@ fn mock_panel_world(master_on: bool) -> TestResult<(World, MockIds)> {
             viz_num_housing,
         },
     ))
+}
+
+fn assert_reagent_layout(reagents: &[MockReagent], expected_rows: &[(f64, f64)]) -> TestResult {
+    let (mut world, ids) = mock_panel_world(Controls::all_on(), reagents)?;
+
+    tick_panel_cycle(&mut world)?;
+
+    for (row, (amount, color)) in expected_rows.iter().copied().enumerate() {
+        assert_reagent_row(&world, &ids, row, amount, color)?;
+    }
+    for row in expected_rows.len()..4 {
+        assert_empty_row(&world, &ids, row)?;
+    }
+    Ok(())
+}
+
+fn tick_panel_cycle(world: &mut World) -> TestResult {
+    world.tick()?;
+    world.tick()?;
+    Ok(())
+}
+
+fn assert_reagent_row(
+    world: &World,
+    ids: &MockIds,
+    row: usize,
+    amount: f64,
+    color: f64,
+) -> TestResult {
+    assert_device_logic(world, ids.reagent_leds[row], "On", 1.0)?;
+    assert_device_logic(world, ids.reagent_leds[row], "Color", color)?;
+    assert_device_logic(world, ids.quantity_displays[row], "On", 1.0)?;
+    assert_device_logic(world, ids.quantity_displays[row], "Setting", amount)?;
+    assert_device_logic(world, ids.quantity_displays[row], "Mode", 0.0)
+}
+
+fn assert_empty_row(world: &World, ids: &MockIds, row: usize) -> TestResult {
+    assert_device_logic(world, ids.reagent_leds[row], "On", 0.0)?;
+    assert_device_logic(world, ids.quantity_displays[row], "On", 0.0)
+}
+
+fn assert_status_displays(world: &World, ids: &MockIds) -> TestResult {
+    assert_device_logic(world, ids.temperature, "On", 1.0)?;
+    assert_device_logic(world, ids.temperature, "Setting", 1873.0)?;
+    assert_device_logic(world, ids.temperature, "Mode", 3.0)?;
+    assert_device_logic(world, ids.pressure, "On", 1.0)?;
+    assert_device_logic(world, ids.pressure, "Setting", 123_456.0)?;
+    assert_device_logic(world, ids.pressure, "Mode", 14.0)?;
+    assert_device_logic(world, ids.input, "On", 1.0)?;
+    assert_device_logic(world, ids.input, "Setting", 27.0)?;
+    assert_device_logic(world, ids.input, "Mode", 12.0)?;
+    assert_device_logic(world, ids.output, "On", 1.0)?;
+    assert_device_logic(world, ids.output, "Setting", 8.0)?;
+    assert_device_logic(world, ids.output, "Mode", 12.0)
+}
+
+fn assert_status_displays_off(world: &World, ids: &MockIds) -> TestResult {
+    assert_device_logic(world, ids.temperature, "On", 0.0)?;
+    assert_device_logic(world, ids.pressure, "On", 0.0)?;
+    assert_device_logic(world, ids.input, "On", 0.0)?;
+    assert_device_logic(world, ids.output, "On", 0.0)
 }
 
 fn assert_script_limits(name: &str, source: &str) -> TestResult {
@@ -286,6 +436,10 @@ fn display(name: &str, on: f64) -> Device {
         .with_logic("On", on)
         .with_logic("Setting", -1.0)
         .with_logic("Mode", -1.0)
+}
+
+const fn number_from_bool(value: bool) -> f64 {
+    if value { 1.0 } else { 0.0 }
 }
 
 fn hash(value: &str) -> f64 {

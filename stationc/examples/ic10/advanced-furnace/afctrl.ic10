@@ -5,11 +5,9 @@ define SwitchType 321604921
 define DialType 554524804
 define VentType HASH("StructureActiveVent")
 define HousingType -128473777
-define CompactHousingType 2037291645
 define LedType 1944485013
-define SmallDisplayType HASH("StructureConsoleLED5")
-define MediumDisplayType HASH("StructureConsoleLED1x2")
-define LargeDisplayType HASH("StructureConsoleLED1x3")
+define LightType -1860064656
+define DisplayType HASH("StructureConsoleLED1x2")
 define FurnaceName HASH("AF")
 define ActivateButtonName HASH("AFACT")
 define MoldLeverName HASH("AFMOLD")
@@ -20,12 +18,10 @@ define GasInDialName HASH("AFGIN")
 define GasOutDialName HASH("AFGOUT")
 define VizLedName HASH("AFVIZLED")
 define VizNumName HASH("AFVIZNUM")
+define RoomLedName HASH("AFLIGHT")
+define RoomLightName HASH("AFLIGHT2")
 main:
-lbn r5 LeverType MasterSwitchName Open Maximum
-sgtz r5 r5
-lbn r6 SwitchType MasterSwitchName Open Maximum
-sgtz r6 r6
-or r5 r5 r6
+lbn r5 SwitchType MasterSwitchName Open Maximum
 sgtz r5 r5
 lbn r7 DialType GasInDialName Setting Maximum
 sbn FurnaceType FurnaceName SettingInput r7
@@ -34,11 +30,9 @@ sbn FurnaceType FurnaceName SettingOutput r8
 beqz r5 master_off
 sbn FurnaceType FurnaceName On 1
 sbn HousingType VizLedName On 1
-sbn CompactHousingType VizLedName On 1
 sbn HousingType VizNumName On 1
-sbn CompactHousingType VizNumName On 1
-move r9 1
-jal set_all_lights
+sbn LedType RoomLedName On 1
+sbn LightType RoomLightName On 1
 lbn r0 ButtonType ActivateButtonName Activate Maximum
 sgtz r0 r0
 sbn FurnaceType FurnaceName Activate r0
@@ -56,68 +50,20 @@ sbn FurnaceType FurnaceName Activate 0
 sbn FurnaceType FurnaceName Open 0
 sbn VentType VentName On 0
 sbn HousingType VizLedName On 0
-sbn CompactHousingType VizLedName On 0
 sbn HousingType VizNumName On 0
-sbn CompactHousingType VizNumName On 0
-move r9 0
-jal set_all_lights
-move r8 HASH("AF1L")
-jal turn_off_led
-move r8 HASH("AF2L")
-jal turn_off_led
-move r8 HASH("AF3L")
-jal turn_off_led
-move r8 HASH("AF4L")
-jal turn_off_led
-move r8 HASH("AF1Q")
-jal turn_off_display
-move r8 HASH("AF2Q")
-jal turn_off_display
-move r8 HASH("AF3Q")
-jal turn_off_display
-move r8 HASH("AF4Q")
-jal turn_off_display
-move r8 HASH("AFT")
-jal turn_off_display
-move r8 HASH("AFP")
-jal turn_off_display
-move r8 HASH("AFIN")
-jal turn_off_display
-move r8 HASH("AFOUT")
-jal turn_off_display
+sbn LedType RoomLedName On 0
+sbn LightType RoomLightName On 0
+sbn LedType HASH("AF1L") On 0
+sbn LedType HASH("AF2L") On 0
+sbn LedType HASH("AF3L") On 0
+sbn LedType HASH("AF4L") On 0
+sbn DisplayType HASH("AF1Q") On 0
+sbn DisplayType HASH("AF2Q") On 0
+sbn DisplayType HASH("AF3Q") On 0
+sbn DisplayType HASH("AF4Q") On 0
+sbn DisplayType HASH("AFT") On 0
+sbn DisplayType HASH("AFP") On 0
+sbn DisplayType HASH("AFIN") On 0
+sbn DisplayType HASH("AFOUT") On 0
 yield
 j main
-set_all_lights:
-move r15 ra
-move r8 HASH("AFLGT")
-jal set_one_light
-move r8 HASH("AFLIGHT")
-jal set_one_light
-move r8 HASH("AFLIGHT1")
-jal set_one_light
-move r8 HASH("AFLIGHT2")
-jal set_one_light
-move r8 HASH("AFLIGHT3")
-jal set_one_light
-move r8 HASH("AFLIGHT4")
-jal set_one_light
-j r15
-set_one_light:
-sbn LedType r8 On r9
-sbn -1860064656 r8 On r9
-sbn 797794350 r8 On r9
-sbn 555215790 r8 On r9
-sbn 1847265835 r8 On r9
-sbn -1306415132 r8 On r9
-sbn 1514476632 r8 On r9
-sbn 1592905386 r8 On r9
-sbn 1436121888 r8 On r9
-j ra
-turn_off_led:
-sbn LedType r8 On 0
-j ra
-turn_off_display:
-sbn SmallDisplayType r8 On 0
-sbn MediumDisplayType r8 On 0
-sbn LargeDisplayType r8 On 0
-j ra
