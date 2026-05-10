@@ -2,12 +2,13 @@ use std::{error::Error as StdError, io};
 
 use stationc::sim::{
     ic10::{ReagentMode, ReferenceId},
-    world::{Device, IcHousing, World},
+    world::{Device, Ic10Schedule, IcHousing, World},
 };
 
 type TestResult<T = ()> = Result<T, Box<dyn StdError>>;
 
 const AFCTRL: &str = include_str!("../../../examples/ic10/advanced-furnace/afctrl.ic10");
+const AFSAFETY: &str = include_str!("../../../examples/ic10/advanced-furnace/afsafety.ic10");
 const AFVIZLED: &str = include_str!("../../../examples/ic10/advanced-furnace/afvizled.ic10");
 const AFVIZNUM: &str = include_str!("../../../examples/ic10/advanced-furnace/afviznum.ic10");
 
@@ -18,11 +19,18 @@ const SWITCH_TYPE: f64 = 321_604_921.0;
 const DIAL_TYPE: f64 = 554_524_804.0;
 const HOUSING_TYPE: f64 = -128_473_777.0;
 const LED_TYPE: f64 = 1_944_485_013.0;
+const ALERT_TYPE: f64 = -1_535_893_860.0;
 const KIT_LIGHT_TYPE: f64 = -1_860_064_656.0;
+const GAS_IN_SETTING: f64 = 27.0;
+const GAS_OUT_SETTING: f64 = 8.0;
+const VENT_OPEN: f64 = 100.0;
+const MAX_PRESSURE: f64 = 180_000.0;
+const RESET_PRESSURE: f64 = 120_000.0;
 
 #[test]
 fn advanced_furnace_panel_scripts_fit_ic10_editor_limits() -> TestResult {
     assert_script_limits("afctrl", AFCTRL)?;
+    assert_script_limits("afsafety", AFSAFETY)?;
     assert_script_limits("afvizled", AFVIZLED)?;
     assert_script_limits("afviznum", AFVIZNUM)
 }
@@ -42,11 +50,14 @@ fn advanced_furnace_panel_displays_four_reagent_rows() -> TestResult {
     assert_device_logic(&world, ids.furnace, "On", 1.0)?;
     assert_device_logic(&world, ids.furnace, "Activate", 1.0)?;
     assert_device_logic(&world, ids.furnace, "Open", 1.0)?;
-    assert_device_logic(&world, ids.furnace, "SettingInput", 27.0)?;
-    assert_device_logic(&world, ids.furnace, "SettingOutput", 8.0)?;
+    assert_device_logic(&world, ids.furnace, "SettingInput", GAS_IN_SETTING)?;
+    assert_device_logic(&world, ids.furnace, "SettingOutput", GAS_OUT_SETTING)?;
     assert_device_logic(&world, ids.vent, "On", 1.0)?;
+    assert_housing_logic(housing(&world, ids.safety_housing)?, "On", 1.0)?;
     assert_housing_logic(housing(&world, ids.viz_led_housing)?, "On", 1.0)?;
     assert_housing_logic(housing(&world, ids.viz_num_housing)?, "On", 1.0)?;
+    assert_device_logic(&world, ids.trip_light, "On", 0.0)?;
+    assert_device_logic(&world, ids.alert_light, "On", 0.0)?;
     assert_reagent_row(&world, &ids, 0, 49.0, 4.0)?;
     assert_reagent_row(&world, &ids, 1, 12.0, 3.0)?;
     assert_reagent_row(&world, &ids, 2, 7.0, 0.0)?;
@@ -94,10 +105,166 @@ fn advanced_furnace_panel_master_on_respects_released_controls() -> TestResult {
     assert_device_logic(&world, ids.vent, "On", 0.0)?;
     assert_housing_logic(housing(&world, ids.viz_led_housing)?, "On", 1.0)?;
     assert_housing_logic(housing(&world, ids.viz_num_housing)?, "On", 1.0)?;
+    assert_device_logic(&world, ids.trip_light, "On", 0.0)?;
+    assert_device_logic(&world, ids.alert_light, "On", 0.0)?;
     assert_reagent_row(&world, &ids, 0, 49.0, 4.0)?;
     assert_empty_row(&world, &ids, 1)?;
     assert_device_logic(&world, ids.led_room_light, "On", 1.0)?;
     assert_device_logic(&world, ids.kit_room_light, "On", 1.0)
+}
+
+#[test]
+fn advanced_furnace_panel_safety_test_switch_uses_trip_flow() -> TestResult {
+    let (mut world, ids) = mock_panel_world(Controls::all_on(), &[])?;
+    set_device_logic(&mut world, ids.furnace, "Pressure", RESET_PRESSURE)?;
+    set_device_logic(&mut world, ids.safety_test_button, "Activate", 1.0)?;
+
+    tick_panel_cycle(&mut world)?;
+
+    assert_device_logic(&world, ids.furnace, "On", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "Pressure", RESET_PRESSURE)?;
+    assert_safety_hold(&world, &ids, 1.0)?;
+
+    assert_safety_trip_chip_power(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.safety_test_button, "Activate", 0.0)?;
+    tick_panel_cycle(&mut world)?;
+
+    assert_safety_hold(&world, &ids, 1.0)?;
+    assert_safety_trip_chip_power(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.reset_button, "Activate", 1.0)?;
+    tick_panel_cycle(&mut world)?;
+
+    assert_safety_reset_clear(&world, &ids)?;
+    assert_all_housings_enabled(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.reset_button, "Activate", 0.0)?;
+    tick_panel_cycle(&mut world)?;
+
+    assert_device_logic(&world, ids.furnace, "Activate", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "Open", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "SettingInput", GAS_IN_SETTING)?;
+    assert_device_logic(&world, ids.furnace, "SettingOutput", GAS_OUT_SETTING)
+}
+
+#[test]
+fn advanced_furnace_panel_safety_reset_clears_outputs_without_trip() -> TestResult {
+    let (mut world, ids) = mock_panel_world(Controls::all_on(), &[])?;
+    set_device_logic(&mut world, ids.furnace, "Pressure", RESET_PRESSURE)?;
+
+    tick_panel_cycle(&mut world)?;
+
+    assert_device_logic(&world, ids.trip_light, "On", 0.0)?;
+    assert_device_logic(&world, ids.alert_light, "On", 0.0)?;
+    assert_device_logic(&world, ids.furnace, "Activate", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "Open", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "SettingInput", GAS_IN_SETTING)?;
+    assert_device_logic(&world, ids.furnace, "SettingOutput", GAS_OUT_SETTING)?;
+
+    set_device_logic(&mut world, ids.reset_button, "Activate", 1.0)?;
+    tick_panel_cycle(&mut world)?;
+
+    assert_device_logic(&world, ids.furnace, "On", 1.0)?;
+    assert_safety_reset_clear(&world, &ids)
+}
+
+#[test]
+fn advanced_furnace_panel_safety_trips_dangerous_pressure_to_exhaust() -> TestResult {
+    let (mut world, ids) = mock_panel_world(Controls::all_on(), &[])?;
+    set_device_logic(&mut world, ids.furnace, "Pressure", MAX_PRESSURE + 1.0)?;
+
+    tick_panel_cycle(&mut world)?;
+
+    assert_device_logic(&world, ids.furnace, "On", 1.0)?;
+    assert_safety_hold(&world, &ids, 1.0)?;
+    assert_safety_trip_chip_power(&world, &ids)?;
+    assert_device_logic(&world, ids.input, "Setting", 0.0)?;
+    assert_device_logic(&world, ids.output, "Setting", VENT_OPEN)
+}
+
+#[test]
+fn advanced_furnace_panel_safety_preempts_control_after_trip() -> TestResult {
+    let (mut world, ids) = mock_panel_world(Controls::all_on(), &[])?;
+    set_device_logic(&mut world, ids.furnace, "Pressure", MAX_PRESSURE + 1.0)?;
+
+    world.tick()?;
+
+    assert_safety_hold(&world, &ids, 1.0)?;
+    assert_safety_trip_chip_power(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.furnace, "SettingInput", GAS_IN_SETTING)?;
+    set_device_logic(&mut world, ids.furnace, "SettingOutput", GAS_OUT_SETTING)?;
+    world.tick()?;
+
+    assert_safety_hold(&world, &ids, 1.0)?;
+    assert_safety_trip_chip_power(&world, &ids)
+}
+
+#[test]
+fn advanced_furnace_panel_reset_does_not_race_control_on_rotating_schedule() -> TestResult {
+    let (mut world, ids) = mock_panel_world(Controls::all_on(), &[])?;
+    world.set_ic10_schedule(Ic10Schedule::Rotating);
+    set_device_logic(&mut world, ids.furnace, "Pressure", MAX_PRESSURE + 1.0)?;
+
+    world.tick()?;
+
+    assert_safety_hold(&world, &ids, 1.0)?;
+    assert_safety_trip_chip_power(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.furnace, "Pressure", RESET_PRESSURE)?;
+    set_device_logic(&mut world, ids.reset_button, "Activate", 1.0)?;
+    world.tick()?;
+
+    assert_safety_reset_clear(&world, &ids)?;
+    assert_all_housings_enabled(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.reset_button, "Activate", 0.0)?;
+    world.tick()?;
+
+    assert_device_logic(&world, ids.furnace, "Activate", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "Open", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "SettingInput", GAS_IN_SETTING)?;
+    assert_device_logic(&world, ids.furnace, "SettingOutput", GAS_OUT_SETTING)
+}
+
+#[test]
+fn advanced_furnace_panel_safety_latches_until_manual_reset() -> TestResult {
+    let (mut world, ids) = mock_panel_world(Controls::all_on(), &[])?;
+    set_device_logic(&mut world, ids.furnace, "Pressure", MAX_PRESSURE + 1.0)?;
+
+    tick_panel_cycle(&mut world)?;
+
+    assert_safety_hold(&world, &ids, 1.0)?;
+    assert_safety_trip_chip_power(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.furnace, "Pressure", RESET_PRESSURE + 1.0)?;
+    set_device_logic(&mut world, ids.reset_button, "Activate", 1.0)?;
+    tick_panel_cycle(&mut world)?;
+
+    assert_safety_hold(&world, &ids, 1.0)?;
+    assert_safety_trip_chip_power(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.furnace, "Pressure", RESET_PRESSURE)?;
+    set_device_logic(&mut world, ids.reset_button, "Activate", 0.0)?;
+    tick_panel_cycle(&mut world)?;
+
+    assert_safety_hold(&world, &ids, 1.0)?;
+    assert_safety_trip_chip_power(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.reset_button, "Activate", 1.0)?;
+    tick_panel_cycle(&mut world)?;
+
+    assert_safety_reset_clear(&world, &ids)?;
+    assert_all_housings_enabled(&world, &ids)?;
+
+    set_device_logic(&mut world, ids.reset_button, "Activate", 0.0)?;
+    tick_panel_cycle(&mut world)?;
+
+    assert_device_logic(&world, ids.furnace, "Activate", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "Open", 1.0)?;
+    assert_device_logic(&world, ids.furnace, "SettingInput", GAS_IN_SETTING)?;
+    assert_device_logic(&world, ids.furnace, "SettingOutput", GAS_OUT_SETTING)
 }
 
 #[test]
@@ -116,14 +283,17 @@ fn advanced_furnace_panel_mock_master_off_shuts_outputs_down() -> TestResult {
 
     tick_panel_cycle(&mut world)?;
 
-    assert_named_device_logic(&world, ids.furnace, "AF", "On", 0.0)?;
+    assert_named_device_logic(&world, ids.furnace, "AF", "On", 1.0)?;
     assert_named_device_logic(&world, ids.furnace, "AF", "Activate", 0.0)?;
     assert_named_device_logic(&world, ids.furnace, "AF", "Open", 0.0)?;
-    assert_named_device_logic(&world, ids.furnace, "AF", "SettingInput", 27.0)?;
-    assert_named_device_logic(&world, ids.furnace, "AF", "SettingOutput", 8.0)?;
+    assert_named_device_logic(&world, ids.furnace, "AF", "SettingInput", 0.0)?;
+    assert_named_device_logic(&world, ids.furnace, "AF", "SettingOutput", VENT_OPEN)?;
     assert_named_device_logic(&world, ids.vent, "AFVNT", "On", 0.0)?;
+    assert_housing_logic(housing(&world, ids.safety_housing)?, "On", 1.0)?;
     assert_housing_logic(housing(&world, ids.viz_led_housing)?, "On", 0.0)?;
     assert_housing_logic(housing(&world, ids.viz_num_housing)?, "On", 0.0)?;
+    assert_device_logic(&world, ids.trip_light, "On", 0.0)?;
+    assert_device_logic(&world, ids.alert_light, "On", 0.0)?;
     for row in 0..4 {
         assert_empty_row(&world, &ids, row)?;
     }
@@ -173,8 +343,14 @@ struct MockIds {
     pressure: ReferenceId,
     input: ReferenceId,
     output: ReferenceId,
+    reset_button: ReferenceId,
+    safety_test_button: ReferenceId,
+    trip_light: ReferenceId,
+    alert_light: ReferenceId,
     led_room_light: ReferenceId,
     kit_room_light: ReferenceId,
+    ctrl_housing: ReferenceId,
+    safety_housing: ReferenceId,
     viz_led_housing: ReferenceId,
     viz_num_housing: ReferenceId,
 }
@@ -207,8 +383,12 @@ fn mock_panel_world(controls: Controls, reagents: &[MockReagent]) -> TestResult<
     world.add_device(
         named_device(LEVER_TYPE, "AFVNTL").with_logic("Open", number_from_bool(controls.vent_on)),
     );
-    world.add_device(named_device(DIAL_TYPE, "AFGIN").with_logic("Setting", 27.0));
-    world.add_device(named_device(DIAL_TYPE, "AFGOUT").with_logic("Setting", 8.0));
+    world.add_device(named_device(DIAL_TYPE, "AFGIN").with_logic("Setting", GAS_IN_SETTING));
+    world.add_device(named_device(DIAL_TYPE, "AFGOUT").with_logic("Setting", GAS_OUT_SETTING));
+    let reset_button =
+        world.add_device(named_device(BUTTON_TYPE, "AFSFTRST").with_logic("Activate", 0.0));
+    let safety_test_button =
+        world.add_device(named_device(BUTTON_TYPE, "AFSFTTST").with_logic("Activate", 0.0));
     let vent =
         world.add_device(named_device(hash("StructureActiveVent"), "AFVNT").with_logic("On", 1.0));
 
@@ -228,14 +408,18 @@ fn mock_panel_world(controls: Controls, reagents: &[MockReagent]) -> TestResult<
     let pressure = world.add_device(display("AFP", 1.0));
     let input = world.add_device(display("AFIN", 1.0));
     let output = world.add_device(display("AFOUT", 1.0));
+    let trip_light = world.add_device(named_device(LED_TYPE, "AFTRIP").with_logic("On", 0.0));
+    let alert_light = world.add_device(named_device(ALERT_TYPE, "AFSFTALRT").with_logic("On", 0.0));
     let led_room_light = world.add_device(named_device(LED_TYPE, "AFLIGHT").with_logic("On", 1.0));
     let kit_room_light =
         world.add_device(named_device(KIT_LIGHT_TYPE, "AFLIGHT2").with_logic("On", 1.0));
 
     let ctrl_housing = world.add_ic10_housing(AFCTRL)?;
+    let safety_housing = world.add_ic10_housing(AFSAFETY)?;
     let viz_led_housing = world.add_ic10_housing(AFVIZLED)?;
     let viz_num_housing = world.add_ic10_housing(AFVIZNUM)?;
     set_housing_identity(&mut world, ctrl_housing, "AFCTRL")?;
+    set_housing_identity(&mut world, safety_housing, "AFSAFETY")?;
     set_housing_identity(&mut world, viz_led_housing, "AFVIZLED")?;
     set_housing_identity(&mut world, viz_num_housing, "AFVIZNUM")?;
 
@@ -250,8 +434,14 @@ fn mock_panel_world(controls: Controls, reagents: &[MockReagent]) -> TestResult<
             pressure,
             input,
             output,
+            reset_button,
+            safety_test_button,
+            trip_light,
+            alert_light,
             led_room_light,
             kit_room_light,
+            ctrl_housing,
+            safety_housing,
             viz_led_housing,
             viz_num_housing,
         },
@@ -305,11 +495,43 @@ fn assert_status_displays(world: &World, ids: &MockIds) -> TestResult {
     assert_device_logic(world, ids.pressure, "Setting", 123_456.0)?;
     assert_device_logic(world, ids.pressure, "Mode", 14.0)?;
     assert_device_logic(world, ids.input, "On", 1.0)?;
-    assert_device_logic(world, ids.input, "Setting", 27.0)?;
+    assert_device_logic(world, ids.input, "Setting", GAS_IN_SETTING)?;
     assert_device_logic(world, ids.input, "Mode", 12.0)?;
     assert_device_logic(world, ids.output, "On", 1.0)?;
-    assert_device_logic(world, ids.output, "Setting", 8.0)?;
+    assert_device_logic(world, ids.output, "Setting", GAS_OUT_SETTING)?;
     assert_device_logic(world, ids.output, "Mode", 12.0)
+}
+
+fn assert_safety_hold(world: &World, ids: &MockIds, trip_on: f64) -> TestResult {
+    assert_device_logic(world, ids.furnace, "Activate", 0.0)?;
+    assert_device_logic(world, ids.furnace, "Open", 0.0)?;
+    assert_device_logic(world, ids.furnace, "SettingInput", 0.0)?;
+    assert_device_logic(world, ids.furnace, "SettingOutput", VENT_OPEN)?;
+    assert_device_logic(world, ids.trip_light, "On", trip_on)?;
+    assert_device_logic(world, ids.alert_light, "On", trip_on)
+}
+
+fn assert_safety_reset_clear(world: &World, ids: &MockIds) -> TestResult {
+    assert_device_logic(world, ids.furnace, "Activate", 0.0)?;
+    assert_device_logic(world, ids.furnace, "Open", 0.0)?;
+    assert_device_logic(world, ids.furnace, "SettingInput", 0.0)?;
+    assert_device_logic(world, ids.furnace, "SettingOutput", 0.0)?;
+    assert_device_logic(world, ids.trip_light, "On", 0.0)?;
+    assert_device_logic(world, ids.alert_light, "On", 0.0)
+}
+
+fn assert_safety_trip_chip_power(world: &World, ids: &MockIds) -> TestResult {
+    assert_housing_logic(housing(world, ids.ctrl_housing)?, "On", 0.0)?;
+    assert_housing_logic(housing(world, ids.viz_led_housing)?, "On", 1.0)?;
+    assert_housing_logic(housing(world, ids.viz_num_housing)?, "On", 1.0)?;
+    assert_housing_logic(housing(world, ids.safety_housing)?, "On", 1.0)
+}
+
+fn assert_all_housings_enabled(world: &World, ids: &MockIds) -> TestResult {
+    assert_housing_logic(housing(world, ids.ctrl_housing)?, "On", 1.0)?;
+    assert_housing_logic(housing(world, ids.viz_led_housing)?, "On", 1.0)?;
+    assert_housing_logic(housing(world, ids.viz_num_housing)?, "On", 1.0)?;
+    assert_housing_logic(housing(world, ids.safety_housing)?, "On", 1.0)
 }
 
 fn assert_status_displays_off(world: &World, ids: &MockIds) -> TestResult {
@@ -373,6 +595,19 @@ fn assert_device_logic(
         ))
     })?;
     assert_number(actual, expected, field)
+}
+
+fn set_device_logic(
+    world: &mut World,
+    reference_id: ReferenceId,
+    field: &str,
+    value: f64,
+) -> TestResult {
+    let device = world
+        .device_mut(reference_id)
+        .ok_or_else(|| test_error(format!("missing device {}", reference_id.value())))?;
+    device.set_logic(field, value);
+    Ok(())
 }
 
 fn assert_housing_logic(housing: &IcHousing, field: &str, expected: f64) -> TestResult {

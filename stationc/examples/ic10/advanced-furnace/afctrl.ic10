@@ -10,6 +10,7 @@ define LightType -1860064656
 define DisplayType HASH("StructureConsoleLED1x2")
 define FurnaceName HASH("AF")
 define ActivateButtonName HASH("AFACT")
+define ResetButtonName HASH("AFSFTRST")
 define MoldLeverName HASH("AFMOLD")
 define VentLeverName HASH("AFVNTL")
 define MasterSwitchName HASH("AFMASTER")
@@ -20,14 +21,21 @@ define VizLedName HASH("AFVIZLED")
 define VizNumName HASH("AFVIZNUM")
 define RoomLedName HASH("AFLIGHT")
 define RoomLightName HASH("AFLIGHT2")
+define TripLedName HASH("AFTRIP")
 main:
+lbn r3 ButtonType ResetButtonName Activate Maximum
+sgtz r3 r3
+bgtz r3 reset_hold
 lbn r5 SwitchType MasterSwitchName Open Maximum
 sgtz r5 r5
+beqz r5 master_off
+lbn r6 LedType TripLedName On Maximum
+sgtz r6 r6
+bgtz r6 safety_hold
 lbn r7 DialType GasInDialName Setting Maximum
 sbn FurnaceType FurnaceName SettingInput r7
 lbn r8 DialType GasOutDialName Setting Maximum
 sbn FurnaceType FurnaceName SettingOutput r8
-beqz r5 master_off
 sbn FurnaceType FurnaceName On 1
 sbn HousingType VizLedName On 1
 sbn HousingType VizNumName On 1
@@ -44,10 +52,31 @@ sgtz r2 r2
 sbn VentType VentName On r2
 yield
 j main
-master_off:
-sbn FurnaceType FurnaceName On 0
+reset_hold:
 sbn FurnaceType FurnaceName Activate 0
 sbn FurnaceType FurnaceName Open 0
+sbn FurnaceType FurnaceName SettingInput 0
+sbn FurnaceType FurnaceName SettingOutput 0
+sbn VentType VentName On 0
+yield
+j main
+safety_hold:
+sbn FurnaceType FurnaceName Activate 0
+sbn FurnaceType FurnaceName Open 0
+sbn FurnaceType FurnaceName SettingInput 0
+sbn FurnaceType FurnaceName SettingOutput 100
+sbn VentType VentName On 0
+sbn HousingType VizLedName On 1
+sbn HousingType VizNumName On 1
+sbn LedType RoomLedName On 1
+sbn LightType RoomLightName On 1
+yield
+j main
+master_off:
+sbn FurnaceType FurnaceName Activate 0
+sbn FurnaceType FurnaceName Open 0
+sbn FurnaceType FurnaceName SettingInput 0
+sbn FurnaceType FurnaceName SettingOutput 100
 sbn VentType VentName On 0
 sbn HousingType VizLedName On 0
 sbn HousingType VizNumName On 0

@@ -1,0 +1,3883 @@
+﻿You:
+
+stationeers how to display the contents of an advanced furnace into leds/screen if the adv furnace is behind a wall
+
+Show moreShow less
+
+ChatGPT:
+
+I’ll verify the current device/logic names, then give you the practical wiring pattern. The core issue is probably not the wall itself; it’s whether you’re trying to read the furnace directly, through a network, or visually.
+
+Thought for 25s
+
+Friend, the wall does not matter **as long as the furnace is on the same data network** as your display logic. The Advanced Furnace exposes data/power connections and readable values like `Pressure`, `Temperature`, `Reagents`, gas ratios, `TotalMoles`, import/export counts, etc. [Stationeers Wiki+1](https://stationeers-wiki.com/Advanced_Furnace)
+
+### Simple hardwired way
+
+For each number you want to show:
+
+1.  Run **data cable** from the Advanced Furnace’s data port through/around the wall to your control room.
+
+2.  Place an **LED Display**.
+
+3.  Place a **Logic Reader**.
+
+4.  Set the Logic Reader:
+
+    -   **Input device:** Advanced Furnace
+
+    -   **Variable:** e.g. `Pressure`, `Temperature`, `Reagents`, `TotalMoles`, `RatioOxygen`, etc.
+
+5.  Place a **Logic Writer**.
+
+6.  Set the Logic Writer:
+
+    -   **Input:** Logic Reader
+
+    -   **Output:** LED Display
+
+    -   **Output variable:** `Setting`
+
+
+LED displays show whatever number is written into their `Setting` variable. Their `Mode` controls formatting, such as normal number, percent, Kelvin, mol, or Pascal. Useful modes: `1 = percent`, `3 = Kelvin`, `13 = mol`, `14 = Pa`. [Stationeers Wiki](https://stationeers-wiki.com/Console?utm_source=chatgpt.com)
+
+So for furnace pressure:
+
+```
+```
+Advanced Furnace Pressure -> Logic Reader -> Logic Writer -> LED Setting
+LED Mode = 14
+```
+```
+
+For furnace temperature:
+
+```
+```
+Advanced Furnace Temperature -> Logic Reader -> Logic Writer -> LED Setting
+LED Mode = 3
+```
+```
+
+For gas ratios:
+
+```
+```
+Advanced Furnace RatioOxygen -> Logic Reader -> Logic Writer -> LED Setting
+LED Mode = 1
+```
+```
+
+The furnace gas ratio fields are already `0.0` to `1.0`, so percent mode works directly. [Stationeers Wiki](https://stationeers-wiki.com/Advanced_Furnace)
+
+### Better way: one IC10 chip driving several LEDs
+
+Use this if you want a clean panel with pressure, temperature, reagents, and gas ratios.
+
+Set device screws like this:
+
+```
+```
+d0 = Advanced Furnace
+d1 = Pressure LED
+d2 = Temperature LED
+d3 = Reagents LED
+d4 = O2 Ratio LED
+d5 = Volatiles Ratio LED
+```
+```
+
+IC10 code:
+
+```
+asm
+
+```
+alias AdvancedFurnace d0
+alias PressureDisplay d1
+alias TemperatureDisplay d2
+alias ReagentsDisplay d3
+alias OxygenRatioDisplay d4
+alias VolatilesRatioDisplay d5
+
+alias FurnacePressure r0
+alias FurnaceTemperature r1
+alias FurnaceReagents r2
+alias FurnaceOxygenRatio r3
+alias FurnaceVolatilesRatio r4
+
+start:
+    l FurnacePressure AdvancedFurnace Pressure
+    l FurnaceTemperature AdvancedFurnace Temperature
+    l FurnaceReagents AdvancedFurnace Reagents
+    l FurnaceOxygenRatio AdvancedFurnace RatioOxygen
+    l FurnaceVolatilesRatio AdvancedFurnace RatioVolatiles
+
+    s PressureDisplay Setting FurnacePressure
+    s PressureDisplay Mode 14
+
+    s TemperatureDisplay Setting FurnaceTemperature
+    s TemperatureDisplay Mode 3
+
+    s ReagentsDisplay Setting FurnaceReagents
+    s ReagentsDisplay Mode 0
+
+    s OxygenRatioDisplay Setting FurnaceOxygenRatio
+    s OxygenRatioDisplay Mode 1
+
+    s VolatilesRatioDisplay Setting FurnaceVolatilesRatio
+    s VolatilesRatioDisplay Mode 1
+
+    yield
+    j start
+```
+```
+
+IC10 device registers `d0` through `d5` are selected with the housing screws, and `l` reads a logic field while `s` writes one. [Stationeers Wiki+1](https://stationeers-wiki.com/IC10)
+
+### If you cannot run cable through the wall
+
+Use **Logic Transmitters**. Put one transmitter near the furnace side, set it active, write a value into its `Setting`, then read that `Setting` from a passive transmitter in the control room. Logic Transmitters wirelessly transmit values, and passive transmitters can read the active transmitter’s `Setting`. [Stationeers Wiki](https://stationeers-wiki.com/Logic_Transmitter)
+
+Caveat: a transmitter pair is basically one value channel unless you start encoding multiple values yourself, so for pressure + temperature + ratios, plain data cable or IC10 is cleaner.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+no i mean the like contents of what is in the furnace. like 50g iron etc.
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 21s
+
+Friend, yeah, for **specific material contents** you do **not** want `Reagents` by itself. `Reagents` is basically just the total amount of stuff in the furnace. It will say `100` for `100g Iron`, and also `100` for `50g Iron + 50g Nickel`. To get the actual per-material breakdown, use IC10’s `lr` instruction:
+
+```
+ic10
+
+```
+lr r0 d0 Contents HASH("Iron")
+```
+```
+
+That reads the amount of **Iron** inside the furnace contents into `r0`. The IC10 wiki lists `lr` as “load reagent” from a device reagent mode, where the reagent mode can be `Contents`, `Required`, or `Recipe`. [Stationeers Wiki](https://stationeers-wiki.com/IC10/instructions) The reagent table lists Iron, Gold, Carbon, etc. as reagent types with gram units. [Stationeers Wiki](https://stationeers-wiki.com/Reagents?utm_source=chatgpt.com)
+
+### Setup
+
+Use:
+
+```
+```
+d0 = Advanced Furnace
+d1 = Iron LED
+d2 = Copper LED
+d3 = Nickel LED
+d4 = Cobalt LED
+d5 = Gold LED
+```
+```
+
+Then put labels next to the LEDs, or label the LEDs themselves:
+
+```
+```
+Iron g
+Copper g
+Nickel g
+Cobalt g
+Gold g
+```
+```
+
+### IC10 code
+
+```
+ic10
+
+```
+alias AdvancedFurnace d0
+alias IronDisplay d1
+alias CopperDisplay d2
+alias NickelDisplay d3
+alias CobaltDisplay d4
+alias GoldDisplay d5
+
+alias IronAmount r0
+alias CopperAmount r1
+alias NickelAmount r2
+alias CobaltAmount r3
+alias GoldAmount r4
+
+main:
+    lr IronAmount AdvancedFurnace Contents HASH("Iron")
+    lr CopperAmount AdvancedFurnace Contents HASH("Copper")
+    lr NickelAmount AdvancedFurnace Contents HASH("Nickel")
+    lr CobaltAmount AdvancedFurnace Contents HASH("Cobalt")
+    lr GoldAmount AdvancedFurnace Contents HASH("Gold")
+
+    s IronDisplay Setting IronAmount
+    s CopperDisplay Setting CopperAmount
+    s NickelDisplay Setting NickelAmount
+    s CobaltDisplay Setting CobaltAmount
+    s GoldDisplay Setting GoldAmount
+
+    s IronDisplay Mode 0
+    s CopperDisplay Mode 0
+    s NickelDisplay Mode 0
+    s CobaltDisplay Mode 0
+    s GoldDisplay Mode 0
+
+    yield
+    j main
+```
+```
+
+This will show things like:
+
+```
+```
+Iron: 50
+Copper: 0
+Nickel: 25
+Cobalt: 0
+Gold: 0
+```
+```
+
+For metals, read those as grams.
+
+### Important limitation
+
+You generally cannot make a normal LED/screen automatically print a dynamic text list like:
+
+```
+```
+50g Iron
+25g Nickel
+```
+```
+
+The clean vanilla way is: **one numeric display per reagent**, with a fixed label next to it.
+
+You can add more by copying the same pattern:
+
+```
+ic10
+
+```
+lr SilverAmount AdvancedFurnace Contents HASH("Silver")
+lr LeadAmount AdvancedFurnace Contents HASH("Lead")
+lr SiliconAmount AdvancedFurnace Contents HASH("Silicon")
+lr CarbonAmount AdvancedFurnace Contents HASH("Carbon")
+```
+```
+
+The core line is always:
+
+```
+ic10
+
+```
+lr SomeRegister AdvancedFurnace Contents HASH("MaterialName")
+```
+```
+
+For your wall problem: just run data cable from the furnace to the IC housing/display panel, or use logic transmitters if you truly cannot cable it. The furnace being physically behind a wall does not matter to IC10 as long as the device is on the data network or pinned directly in the IC housing.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+what are the maximum number of reagents that can go into an alloy?
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 43s
+
+Friend, for **vanilla Stationeers alloy recipes**, the max is **3 distinct material reagents directly in the furnace recipe**.
+
+Examples from the current Advanced Furnace recipe table:
+
+| Alloy | Direct input reagents | Count |
+| --- | --- | --- |
+| Astroloy | Steel, Copper, Cobalt | 3 |
+| Hastelloy | Silver, Nickel, Cobalt | 3 |
+| Inconel | Gold, Nickel, Steel | 3 |
+| Waspaloy | Lead, Silver, Nickel | 3 |
+| Stellite | Silicon, Silver, Cobalt | 3 |
+
+The wiki recipe page says the Advanced Furnace recipes are automatically scraped from the game files, and the table shows those advanced alloy inputs in 3-reagent patterns. [Stationeers Wiki+1](https://stationeers-wiki.com/Advanced_Furnace/Recipes)
+
+So for your display panel: **3 material amount displays is enough for “the current valid alloy recipe.”**
+
+Caveat: **Steel counts as one reagent if you already put Steel ingot in**, but recursively it represents Iron + Carbon. So if you want a raw-element view, then Astroloy/Inconel can effectively involve **4 raw ingredients**:
+
+```
+```
+Astroloy = Steel + Copper + Cobalt
+         = Iron + Carbon + Copper + Cobalt
+```
+```
+
+For an IC-driven furnace monitor, I’d probably make space for **4 or 5 reagent displays** anyway, because the player can dump invalid junk into the furnace and `Contents` can contain more than a valid recipe would. But for valid alloy automation logic: **3 is the magic number.**
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+how many number of raw ingredients
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 29s
+
+Friend, **max is 4 distinct raw ingredients** for any valid alloy chain in vanilla Stationeers.
+
+That only happens for superalloys that use **Steel** as one ingredient, because Steel itself is made from **Iron + Coal/Charcoal**. Steel is made from a 3:1 ratio of Iron Ore to Coal or Charcoal. [Stationeers Wiki](https://stationeers-wiki.com/Ingot_%28Steel%29)
+
+So the worst cases are:
+
+```
+```
+Astroloy = Steel + Copper + Cobalt
+         = Iron + Coal/Charcoal + Copper + Cobalt
+         = 4 raw ingredients
+```
+```
+
+```
+```
+Inconel = Gold + Nickel + Steel
+        = Gold + Nickel + Iron + Coal/Charcoal
+        = 4 raw ingredients
+```
+```
+
+The Advanced Furnace recipes themselves use at most **3 direct inputs**: for example Astroloy uses Steel, Copper, Cobalt; Inconel uses Gold, Nickel, Steel; Hastelloy uses Silver, Nickel, Cobalt; Waspaloy uses Lead, Silver, Nickel; Stellite uses Silicon, Silver, Cobalt. [Stationeers Wiki](https://stationeers-wiki.com/Advanced_Furnace/Recipes)
+
+So for a “current recipe ingredients” display:
+
+```
+```
+Minimum sane displays: 3 direct furnace reagents
+Raw-expanded max:      4 raw ingredients
+Universal monitor:     show all likely solids
+```
+```
+
+For a universal furnace contents panel, I’d monitor these:
+
+```
+```
+Iron
+Coal/Charcoal or Hydrocarbon/Carbon depending what IC10 exposes in your furnace contents
+Copper
+Cobalt
+Gold
+Nickel
+Silver
+Lead
+Silicon
+Steel
+```
+```
+
+But for **maximum raw ingredients in one alloy recipe chain**, the answer is **4**.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+so conceivably i could have 4 panels of 6 LED lights, each led mapping to the first letters of a raw ingredient, with color disambiguited Steel vs Silicon etc., and turn them on next to a LED quantity panel to know what's inside?
+
+Show moreShow less
+
+ChatGPT:
+
+I’m going to ground this in the actual Stationeers device model because the design is sound, but the awkward part is mapping a dynamic reagent list into fixed lamps.
+
+Thought for 26s
+
+Yes, friend. That is a totally reasonable Stationeers-native UI design.
+
+I would make it like this:
+
+```
+```
+[Ingredient Slot 1]  [material-ID lamps]  [quantity LED display]
+[Ingredient Slot 2]  [material-ID lamps]  [quantity LED display]
+[Ingredient Slot 3]  [material-ID lamps]  [quantity LED display]
+[Ingredient Slot 4]  [material-ID lamps]  [quantity LED display]
+```
+```
+
+Each slot means: “one detected furnace ingredient.”
+
+For each slot, you turn on exactly one material lamp and write the amount into the quantity display.
+
+Example display state:
+
+```
+```
+Slot 1:  Iron lamp on       Quantity: 150
+Slot 2:  Carbon lamp on     Quantity: 50
+Slot 3:  Nickel lamp on     Quantity: 100
+Slot 4:  off                Quantity: 0
+```
+```
+
+That tells you:
+
+```
+```
+150g Iron
+50g Carbon/Coal
+100g Nickel
+```
+```
+
+### The one correction
+
+I would not rely on only first letters unless the lights are **strongly color-coded**, because Stationeers materials collide badly:
+
+```
+```
+C = Coal / Charcoal / Copper / Cobalt / Carbon
+S = Steel / Silicon / Silver
+I = Iron / Invar / Inconel if you include alloys
+```
+```
+
+So either use:
+
+```
+```
+Fe  = Iron
+C   = Coal / Charcoal / Carbon
+Cu  = Copper
+Co  = Cobalt
+Ni  = Nickel
+Ag  = Silver
+Au  = Gold
+Pb  = Lead
+Si  = Silicon
+St  = Steel
+```
+```
+
+Or use single letters with color:
+
+```
+```
+I  white/yellow  = Iron
+C  black         = Coal/Carbon
+C  orange        = Copper
+C  blue/gray     = Cobalt
+S  white         = Silver
+S  green/gray    = Silicon
+S  red/orange    = Steel
+```
+```
+
+That works because LEDs can be controlled through the data network with `On` and `Color`, and LED displays can be controlled with `Setting`, `Mode`, `On`, and `Color`. [Stationeers Wiki+1](https://stationeers-wiki.com/LED?utm_source=chatgpt.com)
+
+### Why 4 rows is enough for valid alloy intent
+
+For a valid raw-expanded alloy recipe, 4 ingredient slots is enough. Advanced alloys directly use up to 3 furnace inputs, and the recipes that include Steel expand Steel into Iron + Coal/Charcoal, so the raw-expanded maximum becomes 4. The Advanced Furnace recipe table shows the 3-input superalloys like Astroloy, Inconel, Hastelloy, Waspaloy, and Stellite, while Steel is made from Iron plus Coal/Charcoal. [Stationeers Wiki+1](https://stationeers-wiki.com/Advanced_Furnace/Recipes?utm_source=chatgpt.com)
+
+### But for “what random junk is inside,” 4 rows is not universal
+
+The furnace can contain more than 4 different reagents if you dump random stuff into it. So your UI should have one extra warning lamp:
+
+```
+```
+OVERFLOW / MIXED JUNK
+```
+```
+
+Turn that on if more than 4 tracked reagents are nonzero.
+
+So the ideal panel is:
+
+```
+```
+4 ingredient rows
+1 overflow lamp
+1 total reagents display
+maybe pressure + temp displays nearby
+```
+```
+
+### IC logic shape
+
+The IC should do this:
+
+```
+```
+clear all slot lamps
+clear all quantity displays
+
+read Iron amount
+if Iron > 0:
+    assign Iron to next free slot
+
+read Coal/Charcoal/Carbon amount
+if Carbon > 0:
+    assign Carbon to next free slot
+
+read Copper amount
+if Copper > 0:
+    assign Copper to next free slot
+
+...
+
+if more than 4 nonzero reagents:
+    turn on overflow lamp
+```
+```
+
+Each material read is the same pattern:
+
+```
+ic10
+
+```
+lr IronAmount AdvancedFurnace Contents HASH("Iron")
+```
+```
+
+Then each slot assignment is:
+
+```
+ic10
+
+```
+s Slot1QuantityDisplay Setting IronAmount
+s Slot1IronLamp On 1
+```
+```
+
+So yes: **4 panels of material-ID LEDs plus 4 numeric quantity displays is exactly the right mental model**. I’d just use 2-letter labels or color-coded labels, and add an overflow lamp so you know when the furnace contents exceed the “valid alloy recipe” model.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+what can i use as a stand in thing with the labeler to put these table of contents somewhere in the world. is there a length limit with the labeler?
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 20s
+
+Friend, use **Kit (Sign)**. That is exactly the intended object for this.
+
+Signs can be placed on **walls and frames**, and you edit the text with the **Labeller**. They come in **1x1** and **2x1** variants, so for a furnace “legend/table of contents,” I’d use a **2x1 sign** mounted above or beside the LED bank. The wiki says signs support formatted text and can be edited with the Labeller. [Stationeers Wiki](https://stationeers-wiki.com/Kit_%28Sign%29)
+
+Use text like:
+
+```
+```
+<align=left><size=14>
+Fe  Iron        C   Carbon/Coal
+Cu  Copper      Co  Cobalt
+Ni  Nickel      Ag  Silver
+Au  Gold        Pb  Lead
+Si  Silicon     St  Steel
+</size>
+```
+```
+
+The sign supports formatting tags like bold, italic, underline, `<br>` line breaks, alignment, position, size, and color. [Stationeers Wiki](https://stationeers-wiki.com/Kit_%28Sign%29) So you can do a compact colored legend:
+
+```
+```
+<align=left><size=12>
+<#AAAAAA>Fe</color> Iron<br>
+<#222222>C</color> Carbon/Coal<br>
+<#CC6600>Cu</color> Copper<br>
+<#4466AA>Co</color> Cobalt<br>
+<#88AA88>Ni</color> Nickel<br>
+<#DDDDDD>Ag</color> Silver<br>
+<#FFD700>Au</color> Gold<br>
+<#777777>Pb</color> Lead<br>
+<#99CC99>Si</color> Silicon<br>
+<#CC4444>St</color> Steel
+</size>
+```
+```
+
+The **Labeller itself** can rename objects and set names/values on devices, consoles, and logic objects, but for visible in-world text, **Sign is the clean answer**. [Stationeers Wiki](https://stationeers-wiki.com/Labeller)
+
+On length limit: I did not find a current exact numeric character limit for sign/labeller text. The current wiki documents Labeller formatting limits for `<size=n>` as `0.01` to `40`, but not a character count. [Stationeers Wiki](https://stationeers-wiki.com/Labeller) Patch notes say sign renaming was changed to use **multiline text “to allow more room,”** which implies signs are meant for longer labels than normal device names. [Stationeers Wiki](https://stationeers-wiki.com/Update_v0.2.4089.19416)
+
+Practical answer: **split the legend across 2-3 signs** rather than trying to cram everything into one. It will be more readable and less annoying to edit.
+
+For your furnace panel, I’d do:
+
+```
+```
+[2x1 Sign: MATERIAL LEGEND]
+
+Row 1: [material lamps] [quantity LED]
+Row 2: [material lamps] [quantity LED]
+Row 3: [material lamps] [quantity LED]
+Row 4: [material lamps] [quantity LED]
+
+[1x1 Sign: OVERFLOW = invalid/mixed junk]
+```
+```
+
+Best Stationeers-native solution: **2x1 signs for static text, LEDs for dynamic state, LED Displays for dynamic numbers.**
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+give me a schema for having just 4 LEDS and 4 screens, so one LED's color maps to all possible reagents
+
+Show moreShow less
+
+2/2
+
+ChatGPT:
+
+The important constraint is not the color mapping. It is that 4 LEDs + 4 screens + furnace exceeds one IC’s 6 direct device pins, so the clean schema should use labels / network batch writes or two ICs.
+
+Thought for 1m 16s
+
+Friend, yes. The clean schema is:
+
+```
+```
+4 rows total
+
+Row 1: [material-color LED] [quantity screen]
+Row 2: [material-color LED] [quantity screen]
+Row 3: [material-color LED] [quantity screen]
+Row 4: [material-color LED] [quantity screen]
+```
+```
+
+Each row means:
+
+```
+```
+LED color = which reagent this row represents
+Screen    = how many grams of that reagent are inside the furnace
+```
+```
+
+IC10 can read specific reagent quantities with `lr`, using the furnace’s `Contents` reagent mode, e.g. `lr r0 d0 Contents HASH("Iron")`. The wiki documents `lr` as loading a reagent from `Contents`, `Required`, or `Recipe`. [Stationeers Wiki](https://stationeers-wiki.com/IC10/instructions?utm_source=chatgpt.com)
+
+## Use this material-color schema
+
+I would scope this to **smelting/furnace-relevant reagents**, not the literal global reagent table, because the global table also includes things like food, dyes, milk, oil, etc. [Stationeers Wiki](https://stationeers-wiki.com/Reagents)
+
+```
+```
+OFF / BLACKOUT = empty slot
+
+Rust / orange-brown = Iron
+Black               = Hydrocarbon / Coal
+Dark gray           = Carbon / Charcoal
+Copper / orange     = Copper
+Blue                = Cobalt
+Yellow / gold       = Gold
+Green               = Nickel
+White               = Silver
+Dull gray           = Lead
+Cyan / pale blue    = Silicon
+Red                 = Steel
+Lime                = Uranium, optional
+Purple              = unknown / overflow / bad mix
+```
+```
+
+The important correction is this:
+
+```
+```
+Ore Coal      -> Hydrocarbon reagent
+Charcoal      -> Carbon reagent
+```
+```
+
+The reagent table lists **Hydrocarbon** as coming from coal ore / solid hydrocarbon fuel, and **Carbon** as coming from charcoal. [Stationeers Wiki](https://stationeers-wiki.com/Reagents)
+
+## Row behavior
+
+Each scan cycle:
+
+```
+```
+1. Clear all four rows.
+2. Read all tracked reagent amounts from the furnace.
+3. For each nonzero reagent, assign it to the next free row.
+4. Set that row's LED color.
+5. Set that row's screen to the reagent quantity.
+6. If more than 4 reagents are present, enter overflow mode.
+```
+```
+
+Example:
+
+```
+```
+Row 1: rust LED     screen = 150    -> 150g Iron
+Row 2: black LED    screen = 50     -> 50g Hydrocarbon / Coal
+Row 3: green LED    screen = 100    -> 100g Nickel
+Row 4: off          screen = 0      -> empty
+```
+```
+
+That display means:
+
+```
+```
+150g Iron
+50g Hydrocarbon
+100g Nickel
+```
+```
+
+## Overflow behavior
+
+Because you only have 4 rows, define a hard error state:
+
+```
+```
+All 4 LEDs purple = more than 4 nonzero reagents are inside
+Screen 1 = total reagent grams
+Screen 2 = number of detected reagent types
+Screen 3 = 0
+Screen 4 = 0
+```
+```
+
+That makes the panel say:
+
+```
+```
+"This furnace contains too much mixed junk for this 4-row display."
+```
+```
+
+## Stable scan order
+
+Use a fixed scan order so rows do not randomly reshuffle. I would use:
+
+```
+```
+Iron
+Hydrocarbon
+Carbon
+Copper
+Cobalt
+Gold
+Nickel
+Silver
+Lead
+Silicon
+Steel
+Uranium
+```
+```
+
+If you also want to display already-made alloys that were thrown back into the furnace, extend it:
+
+```
+```
+Electrum
+Invar
+Constantan
+Solder
+Astroloy
+Hastelloy
+Inconel
+Stellite
+Waspaloy
+```
+```
+
+The Advanced Furnace recipe list has direct alloy ingredients like Steel, Copper, Cobalt, Silver, Nickel, Gold, Lead, and Silicon, while the full reagent table also includes the finished alloy reagents. [Stationeers Wiki+1](https://stationeers-wiki.com/Advanced_Furnace/Recipes)
+
+## Physical schema
+
+Because one IC can directly pin only `d0` through `d5`, you cannot directly pin:
+
+```
+```
+1 furnace
+4 LEDs
+4 screens
+= 9 devices
+```
+```
+
+on one IC using only screws. IC10 does have direct device pins `d0`\-`d5`, and also has network/batch instructions like `sbn`/`lbn` for writing to devices by type and label/name hash. [Stationeers Wiki+1](https://stationeers-wiki.com/IC10?utm_source=chatgpt.com)
+
+So use one of these:
+
+### Best clean version
+
+Use **labels + network writes**:
+
+```
+```
+d0 = Advanced Furnace
+
+Label devices:
+AF_ROW_1_LED
+AF_ROW_1_SCREEN
+AF_ROW_2_LED
+AF_ROW_2_SCREEN
+AF_ROW_3_LED
+AF_ROW_3_SCREEN
+AF_ROW_4_LED
+AF_ROW_4_SCREEN
+```
+```
+
+Then the IC reads the furnace from `d0`, and writes to the rows by label.
+
+### Simpler wiring version
+
+Use **two ICs**:
+
+```
+```
+IC A:
+d0 = Furnace
+d1 = Row 1 LED
+d2 = Row 2 LED
+d3 = Row 3 LED
+d4 = Row 4 LED
+d5 = helper IC / memory / optional overflow
+
+IC B:
+d0 = Row 1 Screen
+d1 = Row 2 Screen
+d2 = Row 3 Screen
+d3 = Row 4 Screen
+```
+```
+
+IC A computes the four selected materials and quantities. IC B only displays the quantities.
+
+## What I would put on the sign legend
+
+```
+```
+FURNACE CONTENTS
+
+LED color = material
+screen = grams
+
+Rust     Iron
+Black    Hydrocarbon / Coal
+Dk Gray  Carbon / Charcoal
+Orange   Copper
+Blue     Cobalt
+Yellow   Gold
+Green    Nickel
+White    Silver
+Gray     Lead
+Cyan     Silicon
+Red      Steel
+Purple   overflow / unknown
+```
+```
+
+This is a good compact UI. Four rows is enough for valid raw-expanded alloy work; overflow mode catches the case where you dumped nonsense into the furnace.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+don’t need to worry about device pins i hate using them anyway. Assuming every console and LED is labeled, and we also want 4 more consoles for temperature pressure and liters in and liters out, give me the full complete IC10 code. be mindful of the 128 line limit and the line character limit. make no mistakes
+
+Show moreShow less
+
+ChatGPT:
+
+I’ll give you a single-chip, label-driven IC10 program. I’m checking the exact batch-name instruction shape first because that is where most “looks right but won’t compile” Stationeers code fails.
+
+Thought for 1m 53s
+
+Friend, label the devices exactly like this:
+
+```
+```
+Advanced Furnace: AF
+
+Row 1 LED:    AF1L
+Row 1 screen: AF1Q
+Row 2 LED:    AF2L
+Row 2 screen: AF2Q
+Row 3 LED:    AF3L
+Row 3 screen: AF3Q
+Row 4 LED:    AF4L
+Row 4 screen: AF4Q
+
+Temperature screen: AFT
+Pressure screen:    AFP
+Input liters screen:  AFIN
+Output liters screen: AFOUT
+```
+```
+
+This uses `lbn` to find the furnace by label, `lr` to read each reagent from `Contents`, and `sbn` to write to labeled LEDs/screens. Those instruction forms are current IC10 forms. IC chips have 128 lines with 90 characters per line, and this is under both limits. [Stationeers Wiki+2Stationeers Wiki+2](https://stationeers-wiki.com/IC10/instructions)
+
+This version assumes **medium LED displays**: `StructureConsoleLED1x2`. If you use small LED displays, change `D` to `HASH("StructureConsoleLED5")`. If you use large LED displays, change it to `HASH("StructureConsoleLED1x3")`.
+
+```
+ic10
+
+```
+define F HASH("StructureAdvancedFurnace")
+define L 1944485013
+define D HASH("StructureConsoleLED1x2")
+define FN HASH("AF")
+
+define R1L HASH("AF1L")
+define R2L HASH("AF2L")
+define R3L HASH("AF3L")
+define R4L HASH("AF4L")
+
+define R1Q HASH("AF1Q")
+define R2Q HASH("AF2Q")
+define R3Q HASH("AF3Q")
+define R4Q HASH("AF4Q")
+
+define DT HASH("AFT")
+define DP HASH("AFP")
+define DI HASH("AFIN")
+define DO HASH("AFOUT")
+
+main:
+lbn r11 F FN ReferenceId Maximum
+ble r11 ninf nofurn
+
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r4 7
+move r5 7
+move r6 7
+move r7 7
+move r8 0
+move r12 0
+move r14 0
+
+lr r9 r11 Contents HASH("Iron")
+move r13 4
+jal addmat
+lr r9 r11 Contents HASH("Hydrocarbon")
+move r13 7
+jal addmat
+lr r9 r11 Contents HASH("Carbon")
+move r13 8
+jal addmat
+lr r9 r11 Contents HASH("Copper")
+move r13 3
+jal addmat
+lr r9 r11 Contents HASH("Cobalt")
+move r13 0
+jal addmat
+lr r9 r11 Contents HASH("Gold")
+move r13 5
+jal addmat
+lr r9 r11 Contents HASH("Nickel")
+move r13 2
+jal addmat
+lr r9 r11 Contents HASH("Silver")
+move r13 6
+jal addmat
+lr r9 r11 Contents HASH("Lead")
+move r13 1
+jal addmat
+lr r9 r11 Contents HASH("Silicon")
+move r13 9
+jal addmat
+
+beqz r12 normal
+move r0 r14
+move r1 0
+move r2 0
+move r3 0
+move r4 4
+move r5 4
+move r6 4
+move r7 4
+
+normal:
+sgtz r15 r0
+sbn L R1L On r15
+sbn L R1L Color r4
+sbn D R1Q On r15
+sbn D R1Q Setting r0
+sbn D R1Q Mode 0
+sbn D R1Q Color r4
+
+sgtz r15 r1
+sbn L R2L On r15
+sbn L R2L Color r5
+sbn D R2Q On r15
+sbn D R2Q Setting r1
+sbn D R2Q Mode 0
+sbn D R2Q Color r5
+
+sgtz r15 r2
+sbn L R3L On r15
+sbn L R3L Color r6
+sbn D R3Q On r15
+sbn D R3Q Setting r2
+sbn D R3Q Mode 0
+sbn D R3Q Color r6
+
+sgtz r15 r3
+sbn L R4L On r15
+sbn L R4L Color r7
+sbn D R4Q On r15
+sbn D R4Q Setting r3
+sbn D R4Q Mode 0
+sbn D R4Q Color r7
+
+l r15 r11 Temperature
+sbn D DT On 1
+sbn D DT Setting r15
+sbn D DT Mode 3
+
+l r15 r11 Pressure
+sbn D DP On 1
+sbn D DP Setting r15
+sbn D DP Mode 14
+
+l r15 r11 SettingInput
+sbn D DI On 1
+sbn D DI Setting r15
+sbn D DI Mode 12
+
+l r15 r11 SettingOutput
+sbn D DO On 1
+sbn D DO Setting r15
+sbn D DO Mode 12
+
+yield
+j main
+
+addmat:
+blez r9 done
+add r14 r14 1
+bge r8 4 overflow
+move rr8 r9
+add r10 r8 4
+move rr10 r13
+add r8 r8 1
+j done
+overflow:
+move r12 1
+done:
+j ra
+
+nofurn:
+yield
+j main
+```
+```
+
+Color mapping:
+
+```
+```
+Red     = Iron
+Black   = Hydrocarbon / Coal
+Brown   = Carbon / Charcoal
+Orange  = Copper
+Blue    = Cobalt
+Yellow  = Gold
+Green   = Nickel
+White   = Silver
+Gray    = Lead
+Khaki   = Silicon
+```
+```
+
+The LED color values are the standard data-network colors: blue `0`, gray `1`, green `2`, orange `3`, red `4`, yellow `5`, white `6`, black `7`, brown `8`, khaki `9`. [Stationeers Wiki](https://stationeers-wiki.com/Data_Network_Colors?utm_source=chatgpt.com)
+
+Overflow behavior: if more than 4 tracked reagents are present, all 4 material LEDs turn red and `AF1Q` shows the number of detected reagent types. That means the display is intentionally saying: “contents exceed this 4-row schema.”
+
+The four status screens use LED display modes: Kelvin `3`, Litres `12`, and Pa `14`. The console page confirms `Setting`, `Mode`, `On`, and `Color` are writable on LED displays. [Stationeers Wiki](https://stationeers-wiki.com/Console)
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+the script you gave me is longer than 128 lines dude
+
+Show moreShow less
+
+ChatGPT:
+
+You’re right, friend. That was my miss. I’m going to collapse it properly and count the actual lines before giving you the corrected version.
+
+One more correction before the code: if those 4 “LEDs” are literal Kit(Lights), IC10 cannot dynamically set their color; the wiki only lists `On` and `Lock` for lights. Use small/medium **Console LED displays** as the color swatches, because LED displays expose `Color`, `On`, `Setting`, and `Mode`.
+
+Thought for 2m 43s
+
+You’re right, friend. Corrected version below is **exactly 128 IC10 lines**, with max line length **38 chars**. IC10’s limit is 128 lines and 90 chars per line. [Stationeers Wiki](https://stationeers-wiki.com/Integrated_Circuit_%28IC10%29?utm_source=chatgpt.com)
+
+This assumes every color LED and every numeric screen is a **medium Console LED1x2**, hash `-53151617`. The Advanced Furnace hash is `545937711`. [Stationeers Wiki+1](https://stationeers-wiki.com/ItemHash)
+
+Label devices exactly:
+
+```
+```
+Advanced Furnace: AF
+
+Color LEDs:
+AF1L
+AF2L
+AF3L
+AF4L
+
+Quantity screens:
+AF1Q
+AF2Q
+AF3Q
+AF4Q
+
+Status screens:
+AFT
+AFP
+AFIN
+AFOUT
+```
+```
+
+```
+ic10
+
+```
+define F 545937711
+define D -53151617
+define N HASH("AF")
+main:
+lbn r11 F N ReferenceId Maximum
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r4 7
+move r5 7
+move r6 7
+move r7 7
+move r8 0
+move r12 0
+move r14 0
+lr r9 r11 Contents HASH("Iron")
+move r13 4
+jal add
+lr r9 r11 Contents HASH("Hydrocarbon")
+move r13 7
+jal add
+lr r9 r11 Contents HASH("Carbon")
+move r13 8
+jal add
+lr r9 r11 Contents HASH("Copper")
+move r13 3
+jal add
+lr r9 r11 Contents HASH("Cobalt")
+move r13 0
+jal add
+lr r9 r11 Contents HASH("Gold")
+move r13 5
+jal add
+lr r9 r11 Contents HASH("Nickel")
+move r13 2
+jal add
+lr r9 r11 Contents HASH("Silver")
+move r13 6
+jal add
+lr r9 r11 Contents HASH("Lead")
+move r13 1
+jal add
+lr r9 r11 Contents HASH("Silicon")
+move r13 9
+jal add
+lr r9 r11 Contents HASH("Steel")
+move r13 4
+jal add
+beqz r12 show
+move r0 r14
+move r1 0
+move r2 0
+move r3 0
+move r4 4
+show:
+move r8 HASH("AF1L")
+move r9 r0
+move r10 r4
+jal wl
+move r8 HASH("AF1Q")
+jal wq
+move r8 HASH("AF2L")
+move r9 r1
+move r10 r5
+jal wl
+move r8 HASH("AF2Q")
+jal wq
+move r8 HASH("AF3L")
+move r9 r2
+move r10 r6
+jal wl
+move r8 HASH("AF3Q")
+jal wq
+move r8 HASH("AF4L")
+move r9 r3
+move r10 r7
+jal wl
+move r8 HASH("AF4Q")
+jal wq
+l r9 r11 Temperature
+move r8 HASH("AFT")
+move r10 3
+jal wd
+l r9 r11 Pressure
+move r8 HASH("AFP")
+move r10 14
+jal wd
+l r9 r11 SettingInput
+move r8 HASH("AFIN")
+move r10 12
+jal wd
+l r9 r11 SettingOutput
+move r8 HASH("AFOUT")
+move r10 12
+jal wd
+yield
+j main
+add:
+blez r9 ret
+add r14 r14 1
+bge r8 4 of
+move rr8 r9
+add r15 r8 4
+move rr15 r13
+add r8 r8 1
+j ret
+of:
+move r12 1
+ret:
+j ra
+wl:
+sgtz r15 r9
+sbn D r8 On r15
+sbn D r8 Setting r15
+sbn D r8 Color r10
+j ra
+wq:
+sgtz r15 r9
+sbn D r8 On r15
+sbn D r8 Setting r9
+sbn D r8 Mode 0
+j ra
+wd:
+sbn D r8 On 1
+sbn D r8 Setting r9
+sbn D r8 Mode r10
+j ra
+```
+```
+
+Color map used:
+
+```
+```
+Blue    = Cobalt
+Gray    = Lead
+Green   = Nickel
+Orange  = Copper
+Red     = Iron or Steel
+Yellow  = Gold
+White   = Silver
+Black   = Hydrocarbon / coal
+Brown   = Carbon / charcoal
+Khaki   = Silicon
+```
+```
+
+The `lr` instruction reads a reagent amount from `Contents`, while `lbn` and `sbn` are the named batch load/write instructions used here. [Stationeers Wiki](https://stationeers-wiki.com/IC10/instructions) The Advanced Furnace exposes `Temperature`, `Pressure`, `SettingInput`, and `SettingOutput`, which is what the four status screens show. [Stationeers Wiki](https://stationeers-wiki.com/Advanced_Furnace)
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+i hav 49 iron loaded into the furnace, everything wired up, but all the reagent leds/screens are not set to anything and the screens are in fact being turned off. walk me through what is supposed to be happening, and what the issue is
+
+Show moreShow less
+
+ChatGPT:
+
+I’m going to debug this as the actual execution path of the IC, not as a wiring checklist. The symptom means the script is reaching the display-writing section, but the reagent amount registers are staying zero.
+
+Thought for 20s
+
+Friend, the script is behaving consistently with **“the furnace has no reagent contents yet.”**
+
+What is supposed to happen:
+
+1.  IC finds the Advanced Furnace named `AF`.
+
+2.  It runs:
+
+
+```
+ic10
+
+```
+lr r9 r11 Contents HASH("Iron")
+```
+```
+
+3.  If that returns a value greater than zero, `add` stores it into row 1.
+
+4.  Later, `wq` writes that quantity to `AF1Q`.
+
+5.  `wq` also does this:
+
+
+```
+ic10
+
+```
+sgtz r15 r9
+sbn D r8 On r15
+```
+```
+
+So if the quantity is `0`, it intentionally turns that row’s screen **off**.
+
+That means your symptom:
+
+```
+```
+all reagent screens are off
+```
+```
+
+means:
+
+```
+```
+all lr ... Contents HASH(...) reads are returning 0
+```
+```
+
+The most likely cause is this:
+
+**The 49 iron is loaded into the furnace input, but it has not become furnace reagent contents yet.**
+
+Stationeers distinguishes “stuff sitting in the furnace input/input slot” from “processed reagent contents inside the furnace.” `lr ... Contents HASH("Iron")` reads the processed reagent contents. A Stationeers discussion describes this exact trap: ore in the input is not a reagent until it is processed/de-gassed/melted by sufficient furnace gas temperature; only then does it appear as furnace reagent contents. The same thread gives the canonical form `lr r0 dFurnace Contents HASH("Iron")`. [Steam Community](https://steamcommunity.com/app/544550/discussions/0/3815166994146582836/?utm_source=chatgpt.com)
+
+So if you have **49g Iron Ore sitting in the input**, the script sees:
+
+```
+```
+Iron reagent contents = 0
+```
+```
+
+and correctly turns the display off.
+
+What you should test:
+
+1.  Heat/ignite the furnace enough that the ore actually processes.
+
+2.  Look at the Advanced Furnace’s own front panel / hover info.
+
+3.  Once the furnace panel shows something like purple/yellow reagent contents for Iron, the IC should light row 1 and show `49`.
+
+
+The Advanced Furnace workflow is still: add fuel, ignite, add ore, wait for the furnace to process under the right temperature/pressure conditions. The Advanced Furnace wiki describes it as using the furnace to process ores and create alloys, with operation similar to the basic furnace: add fuel, ignite, add ore. [Stationeers Wiki](https://stationeers-wiki.com/Advanced_Furnace?utm_source=chatgpt.com)
+
+### Other possible issue: wrong display type hash
+
+The code assumes your row LEDs and screens are **medium LED displays**:
+
+```
+ic10
+
+```
+define D -53151617
+```
+```
+
+If your screens are not `StructureConsoleLED1x2`, then `sbn D ...` will not hit them. But you said the screens are being turned off, which strongly implies the script **is** reaching the screens and writing `On = 0`.
+
+So the display hash is probably not the problem.
+
+### Other possible issue: furnace label/type mismatch
+
+If the furnace were not found, this line would fail to give a real reference:
+
+```
+ic10
+
+```
+lbn r11 F N ReferenceId Maximum
+```
+```
+
+But then the whole script would be reading from a bad reference. To test this quickly, check whether your temperature/pressure screens update. If `AFT` and `AFP` show real values, the furnace was found. If they do not, then either:
+
+```
+```
+furnace is not named exactly AF
+```
+```
+
+or
+
+```
+```
+Advanced Furnace type hash is wrong for your object/build
+```
+```
+
+### Most likely answer
+
+Your code is probably fine enough to reach the displays.
+
+Your furnace does **not yet contain Iron reagent**.
+
+It contains unprocessed iron in the input. Heat/process it until the furnace itself shows Iron as reagent contents, then `lr ... Contents HASH("Iron")` will return nonzero and the first row will turn on.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+![](https://www.google.com/s2/favicons?domain=https://steamcommunity.com&sz=32)
+
+Sources
+
+You:
+
+now how do i wire up a button to the activate on the AF? Is a single button enough or do I need IC/gates
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 23s
+
+Friend, a **single button by itself is not enough**. Data cable does not mean “button output automatically drives furnace input.”
+
+You need something to copy:
+
+```
+```
+Button.Activate -> AdvancedFurnace.Activate
+```
+```
+
+The simplest non-IC setup is:
+
+```
+```
+Button -> Logic Reader -> Logic Writer -> Advanced Furnace
+```
+```
+
+The Button’s `Activate` goes briefly to `1` when pressed, then reverts to `0`; the Advanced Furnace’s `Activate` is writable and activates the furnace when set to `1`, deactivates when set to `0`. [Stationeers Wiki+1](https://stationeers-wiki.com/Logic_Switch)
+
+## Logic chip setup
+
+Use a **Button**, not a Switch/Lever.
+
+### Logic Reader
+
+```
+```
+Input device: Button
+Variable: Activate
+```
+```
+
+### Logic Writer
+
+```
+```
+Input: Logic Reader
+Output device: Advanced Furnace
+Output variable: Activate
+```
+```
+
+That is enough. No gates needed.
+
+Pressing the button does this:
+
+```
+```
+Button.Activate = 1
+Logic Reader reads 1
+Logic Writer writes AdvancedFurnace.Activate = 1
+Furnace fires / processes / button-press action happens
+Button.Activate returns to 0
+Logic Writer writes AdvancedFurnace.Activate = 0
+```
+```
+
+That mimics pressing the furnace’s own front button. The Advanced Furnace guide describes pressing the front button to melt ice / ignite the fuel mixture / begin processing ore. [Stationeers Wiki](https://stationeers-wiki.com/Advanced_Furnace)
+
+## If using IC10 instead
+
+Label your remote button:
+
+```
+```
+AFBTN
+```
+```
+
+Then a tiny standalone IC can do:
+
+```
+ic10
+
+```
+define F HASH("StructureAdvancedFurnace")
+define B HASH("StructureLogicButton")
+define FN HASH("AF")
+define BN HASH("AFBTN")
+
+main:
+lbn r0 B BN Activate Maximum
+sbn F FN Activate r0
+yield
+j main
+```
+```
+
+However, for this case I’d use the **Logic Reader + Logic Writer**. It is cleaner and does not consume IC space in your furnace monitor script.
+
+## Important warning
+
+Do **not** use a normal switch unless you specifically want the furnace `Activate` held high. Use a momentary **Button** so it pulses the furnace the same way the built-in furnace button does.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+give me another IC that will map two buttons for activate and open/close mold
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 32s
+
+Friend, use **two labeled Logic Buttons** and one IC.
+
+Label exactly:
+
+```
+```
+Advanced Furnace: AF
+Activate Button:   AFACT
+Mold Button:       AFMOLD
+```
+```
+
+The activate button is passed straight through to `AdvancedFurnace.Activate`. The mold button is treated as a **toggle**: press once to open, press again to close. The Advanced Furnace exposes both `Open` and `Activate` as read/write data params, and `lbn`/`sbn` are the named batch read/write IC10 instructions. [Stationeers Wiki+2Stationeers Wiki+2](https://stationeers-wiki.com/Advanced_Furnace)
+
+```
+ic10
+
+```
+define F 545937711
+define B 491845673
+define AF HASH("AF")
+define BA HASH("AFACT")
+define BM HASH("AFMOLD")
+
+main:
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+
+lbn r1 B BM Activate Maximum
+sgtz r1 r1
+blez r1 no_mold
+bgtz r10 no_mold
+lbn r2 F AF Open Maximum
+seq r2 r2 0
+sbn F AF Open r2
+
+no_mold:
+move r10 r1
+yield
+j main
+```
+```
+
+What it does:
+
+```
+```
+AFACT pressed:
+    furnace Activate = 1
+AFACT released:
+    furnace Activate = 0
+
+AFMOLD pressed:
+    reads current furnace Open
+    writes the opposite value
+```
+```
+
+So `AFMOLD` is edge-triggered. Holding the button down will not flicker the mold open/closed every tick.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+also a button to toggle on/off an active vent named AFVNT
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 9s
+
+Friend, use this as the replacement for the previous button IC.
+
+Labels:
+
+```
+```
+Advanced Furnace: AF
+Activate Button:  AFACT
+Mold Button:      AFMOLD
+Vent Button:      AFVNTB
+Active Vent:      AFVNT
+```
+```
+
+Behavior:
+
+```
+```
+AFACT  = momentary pass-through to furnace Activate
+AFMOLD = toggle furnace Open
+AFVNTB = toggle active vent On
+```
+```
+
+```
+ic10
+
+```
+define F HASH("StructureAdvancedFurnace")
+define B HASH("StructureLogicButton")
+define V HASH("StructureActiveVent")
+
+define AF HASH("AF")
+define BA HASH("AFACT")
+define BM HASH("AFMOLD")
+define BV HASH("AFVNTB")
+define VN HASH("AFVNT")
+
+main:
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+
+lbn r1 B BM Activate Maximum
+sgtz r1 r1
+blez r1 no_mold
+bgtz r10 no_mold
+lbn r2 F AF Open Maximum
+seq r2 r2 0
+sbn F AF Open r2
+
+no_mold:
+move r10 r1
+
+lbn r3 B BV Activate Maximum
+sgtz r3 r3
+blez r3 no_vent
+bgtz r11 no_vent
+lbn r4 V VN On Maximum
+seq r4 r4 0
+sbn V VN On r4
+
+no_vent:
+move r11 r3
+
+yield
+j main
+```
+```
+
+The vent button is edge-triggered like the mold button, so holding it down will not spam-toggle the vent.
+
+You:
+
+make the mold and the vent a lever instead
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 15s
+
+Friend, replace the toggle-button version with this. **Activate stays a button. Mold and vent become levers.**
+
+Label exactly:
+
+```
+```
+Advanced Furnace: AF
+Activate Button:  AFACT
+
+Mold Lever:       AFMOLD
+Vent Lever:       AFVNTL
+Active Vent:      AFVNT
+```
+```
+
+Do **not** name the vent lever `AFVNT`, because that is already the Active Vent’s name.
+
+```
+ic10
+
+```
+define F HASH("StructureAdvancedFurnace")
+define B HASH("StructureLogicButton")
+define S HASH("StructureLogicSwitch")
+define V HASH("StructureActiveVent")
+
+define AF HASH("AF")
+define BA HASH("AFACT")
+define LM HASH("AFMOLD")
+define LV HASH("AFVNTL")
+define VN HASH("AFVNT")
+
+main:
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+
+lbn r1 S LM Setting Maximum
+sgtz r1 r1
+sbn F AF Open r1
+
+lbn r2 S LV Setting Maximum
+sgtz r2 r2
+sbn V VN On r2
+
+yield
+j main
+```
+```
+
+What happens:
+
+```
+```
+AFACT pressed  -> AF Activate = 1
+AFACT released -> AF Activate = 0
+
+AFMOLD lever off -> AF Open = 0
+AFMOLD lever on  -> AF Open = 1
+
+AFVNTL lever off -> AFVNT On = 0
+AFVNTL lever on  -> AFVNT On = 1
+```
+```
+
+The lever/switch exposes `Setting`, while the button uses `Activate`; `StructureLogicSwitch` is the prefab used for switch/lever batch reads. [stationeers-wiki.com+1](https://stationeers-wiki.com/Kit_%28Switch%29?utm_source=chatgpt.com)
+
+![](https://www.google.com/s2/favicons?domain=https://steamcommunity.com&sz=32)
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+expand this script to have a master on/off switch named AFMASTER, which will switch on the furnace, and the AFVIZ IC housing. When switched off, it will switch everything off, all the LEDs, lights, AF, etc. except for the housing it's in (AFCTRL)
+
+Show moreShow less
+
+ChatGPT:
+
+I’ll fold this into the control IC, not the visualization IC. I’m going to make `AFMASTER` act as a hard enable: when off, it overrides the mold lever, vent lever, furnace, visualization housing, and displays/lights.
+
+Thought for 1m 19s
+
+Friend, use this as the **AFCTRL** IC script.
+
+This assumes:
+
+```
+```
+Current IC housing: AFCTRL
+Visualization IC housing: AFVIZ
+
+Master switch: AFMASTER
+Activate button: AFACT
+Mold lever: AFMOLD
+Vent lever: AFVNTL
+Active vent: AFVNT
+Advanced furnace: AF
+
+Optional furnace-area lights: AFLGT
+```
+```
+
+The script uses named batch reads/writes, so the devices just need to be on the same data network and labeled correctly. IC10 supports `lbn` / `sbn` for named batch IO, and IC housings have a writable `On` parameter, so `AFCTRL` can turn `AFVIZ` on/off without turning itself off. [Stationeers Wiki+1](https://stationeers-wiki.com/IC10)
+
+```
+ic10
+
+```
+define F HASH("StructureAdvancedFurnace")
+define B HASH("StructureLogicButton")
+define S HASH("StructureLogicSwitch")
+define V HASH("StructureActiveVent")
+define H HASH("StructureCircuitHousing")
+define D HASH("StructureConsoleLED1x2")
+define WL HASH("StructureWallLight")
+define LT HASH("StructureLight")
+
+define AF HASH("AF")
+define BA HASH("AFACT")
+define LM HASH("AFMOLD")
+define LV HASH("AFVNTL")
+define MA HASH("AFMASTER")
+define VN HASH("AFVNT")
+define VZ HASH("AFVIZ")
+define LG HASH("AFLGT")
+
+main:
+lbn r5 S MA Setting Maximum
+sgtz r5 r5
+
+sbn F AF On r5
+sbn H VZ On r5
+sbn WL LG On r5
+sbn LT LG On r5
+
+beqz r5 off
+
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+
+lbn r1 S LM Setting Maximum
+sgtz r1 r1
+sbn F AF Open r1
+
+lbn r2 S LV Setting Maximum
+sgtz r2 r2
+sbn V VN On r2
+
+yield
+j main
+
+off:
+sbn F AF Activate 0
+sbn F AF Open 0
+sbn V VN On 0
+sbn F AF SettingInput 0
+sbn F AF SettingOutput 0
+
+sbn D HASH("AF1L") On 0
+sbn D HASH("AF2L") On 0
+sbn D HASH("AF3L") On 0
+sbn D HASH("AF4L") On 0
+sbn D HASH("AF1Q") On 0
+sbn D HASH("AF2Q") On 0
+sbn D HASH("AF3Q") On 0
+sbn D HASH("AF4Q") On 0
+sbn D HASH("AFT") On 0
+sbn D HASH("AFP") On 0
+sbn D HASH("AFIN") On 0
+sbn D HASH("AFOUT") On 0
+
+yield
+j main
+```
+```
+
+What it does:
+
+```
+```
+AFMASTER off:
+    AF On = 0
+    AF Activate = 0
+    AF Open = 0
+    AF SettingInput = 0
+    AF SettingOutput = 0
+    AFVNT On = 0
+    AFVIZ On = 0
+    all labeled AF LED displays off
+    all lights named AFLGT off
+    AFCTRL keeps running
+
+AFMASTER on:
+    AF On = 1
+    AFVIZ On = 1
+    lights named AFLGT on
+    AFACT button drives AF Activate
+    AFMOLD lever drives AF Open
+    AFVNTL lever drives AFVNT On
+```
+```
+
+One important note: the code zeros `SettingInput` and `SettingOutput` when master is off. That is the hard-safe behavior. Remove these two lines if you want the furnace to remember its pump settings between shutdowns:
+
+```
+ic10
+
+```
+sbn F AF SettingInput 0
+sbn F AF SettingOutput 0
+```
+```
+
+The furnace exposes writable `On`, `Activate`, `Open`, `SettingInput`, and `SettingOutput`, so those fields are valid targets. [Stationeers Wiki](https://stationeers-wiki.com/Advanced_Furnace) The `D` hash assumes your row LEDs/screens are the same medium LED displays from the earlier script, `StructureConsoleLED1x2`; those displays expose writable `On`, `Setting`, `Mode`, and `Color`. [Stationeers Wiki](https://stationeers-wiki.com/Console)
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+You need to use the names of our lights/leds etc. not generic device types, this network will not be isolated from the rest of the base
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 21s
+
+You’re right, friend. In IC10, `sbn` still requires a **device type hash**, but the **name hash is what scopes the write**. Plain `sb HASH("StructureWallLight") On 0` would hit every wall light of that type on the network. `sbn HASH("StructureWallLight") HASH("AFLIGHT1") On 0` only hits devices of that type with that label. The named batch form is `sbn deviceHash nameHash logicType value`. [Stationeers Wiki+1](https://stationeers-wiki.com/IC10/instructions?utm_source=chatgpt.com)
+
+Use this replacement. It only targets explicitly named furnace-panel devices.
+
+Label exactly:
+
+```
+```
+Advanced Furnace: AF
+Control IC Housing: AFCTRL
+Visualization IC Housing: AFVIZ
+
+Master Switch: AFMASTER
+Activate Button: AFACT
+Mold Lever: AFMOLD
+Vent Lever: AFVNTL
+Active Vent: AFVNT
+
+Optional lights:
+AFLIGHT1
+AFLIGHT2
+AFLIGHT3
+AFLIGHT4
+
+Furnace visualization displays:
+AF1L
+AF2L
+AF3L
+AF4L
+AF1Q
+AF2Q
+AF3Q
+AF4Q
+AFT
+AFP
+AFIN
+AFOUT
+```
+```
+
+```
+ic10
+
+```
+define F HASH("StructureAdvancedFurnace")
+define B HASH("StructureLogicButton")
+define S HASH("StructureLogicSwitch")
+define V HASH("StructureActiveVent")
+define H HASH("StructureCircuitHousing")
+define D HASH("StructureConsoleLED1x2")
+define WL HASH("StructureWallLight")
+define LT HASH("StructureLight")
+
+define AF HASH("AF")
+define BA HASH("AFACT")
+define LM HASH("AFMOLD")
+define LV HASH("AFVNTL")
+define MA HASH("AFMASTER")
+define VN HASH("AFVNT")
+define VZ HASH("AFVIZ")
+
+main:
+lbn r5 S MA Setting Maximum
+sgtz r5 r5
+
+sbn F AF On r5
+sbn H VZ On r5
+
+sbn WL HASH("AFLIGHT1") On r5
+sbn WL HASH("AFLIGHT2") On r5
+sbn WL HASH("AFLIGHT3") On r5
+sbn WL HASH("AFLIGHT4") On r5
+sbn LT HASH("AFLIGHT1") On r5
+sbn LT HASH("AFLIGHT2") On r5
+sbn LT HASH("AFLIGHT3") On r5
+sbn LT HASH("AFLIGHT4") On r5
+
+beqz r5 off
+
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+
+lbn r1 S LM Setting Maximum
+sgtz r1 r1
+sbn F AF Open r1
+
+lbn r2 S LV Setting Maximum
+sgtz r2 r2
+sbn V VN On r2
+
+yield
+j main
+
+off:
+sbn F AF Activate 0
+sbn F AF Open 0
+sbn V VN On 0
+sbn F AF SettingInput 0
+sbn F AF SettingOutput 0
+
+sbn D HASH("AF1L") On 0
+sbn D HASH("AF2L") On 0
+sbn D HASH("AF3L") On 0
+sbn D HASH("AF4L") On 0
+sbn D HASH("AF1Q") On 0
+sbn D HASH("AF2Q") On 0
+sbn D HASH("AF3Q") On 0
+sbn D HASH("AF4Q") On 0
+sbn D HASH("AFT") On 0
+sbn D HASH("AFP") On 0
+sbn D HASH("AFIN") On 0
+sbn D HASH("AFOUT") On 0
+
+yield
+j main
+```
+```
+
+One caveat: this assumes your LED screens are `StructureConsoleLED1x2`, the medium LED display. LED displays expose `On`, `Setting`, `Mode`, and `Color`, so they are valid targets for this. [Stationeers Wiki](https://stationeers-wiki.com/Console?utm_source=chatgpt.com)
+
+If you used small or large LED displays, replace this line:
+
+```
+ic10
+
+```
+define D HASH("StructureConsoleLED1x2")
+```
+```
+
+with the correct display prefab hash from Stationpedia. Everything else can stay name-scoped.
+
+The `AFCTRL` housing is intentionally never written to. This IC can turn off `AFVIZ`, but it will not kill itself.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+regardless of what state AFMASTER is in, the script always turns everything off
+
+Show moreShow less
+
+ChatGPT:
+
+That symptom means `r5` is always resolving to `0` after this line path: read master switch, normalize it with `sgtz`, then branch to `off`. The failure is almost certainly that the IC is not actually reading `AFMASTER.Setting` from the device type we declared.
+
+Thought for 1m 32s
+
+Friend, the bug is almost certainly here:
+
+```
+ic10
+
+```
+define S HASH("StructureLogicSwitch")
+...
+lbn r5 S MA Setting Maximum
+```
+```
+
+`StructureLogicSwitch` is the **Lever** prefab. The actual **Switch** prefab is `StructureLogicSwitch2`. So if `AFMASTER` is the switch variant, the script never finds it, `r5` normalizes to `0`, and it always jumps into `off`. The wiki lists Switch as `StructureLogicSwitch2` and Lever as `StructureLogicSwitch`; both expose `Open` as the actual state, with `Setting` only as a read-only alias. [Stationeers Wiki](https://stationeers-wiki.com/Logic_Switch)
+
+Also, named batch commands still require both the **device type hash** and **name hash**; `lbn`/`sbn` are explicitly `deviceHash nameHash logicType batchMode/value`. [Stationeers Wiki](https://stationeers-wiki.com/IC10)
+
+Use this corrected script. It reads `AFMASTER` as either a **lever** or a **switch**, using `Open`, then ORs the results.
+
+```
+ic10
+
+```
+define F 545937711
+define B 491845673
+define LV 1220484876
+define SW 321604921
+define V HASH("StructureActiveVent")
+define H -128473777
+define HC 2037291645
+define D HASH("StructureConsoleLED1x2")
+define WL HASH("StructureWallLight")
+define LT HASH("StructureLight")
+
+define AF HASH("AF")
+define BA HASH("AFACT")
+define LM HASH("AFMOLD")
+define VL HASH("AFVNTL")
+define MA HASH("AFMASTER")
+define VN HASH("AFVNT")
+define VZ HASH("AFVIZ")
+
+main:
+lbn r5 LV MA Open Maximum
+sgtz r5 r5
+lbn r6 SW MA Open Maximum
+sgtz r6 r6
+or r5 r5 r6
+sgtz r5 r5
+
+sbn F AF On r5
+sbn H VZ On r5
+sbn HC VZ On r5
+
+sbn WL HASH("AFLIGHT1") On r5
+sbn WL HASH("AFLIGHT2") On r5
+sbn WL HASH("AFLIGHT3") On r5
+sbn WL HASH("AFLIGHT4") On r5
+sbn LT HASH("AFLIGHT1") On r5
+sbn LT HASH("AFLIGHT2") On r5
+sbn LT HASH("AFLIGHT3") On r5
+sbn LT HASH("AFLIGHT4") On r5
+
+beqz r5 off
+
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+
+lbn r1 LV LM Open Maximum
+sgtz r1 r1
+sbn F AF Open r1
+
+lbn r2 LV VL Open Maximum
+sgtz r2 r2
+sbn V VN On r2
+
+yield
+j main
+
+off:
+sbn F AF Activate 0
+sbn F AF Open 0
+sbn V VN On 0
+sbn F AF SettingInput 0
+sbn F AF SettingOutput 0
+
+sbn D HASH("AF1L") On 0
+sbn D HASH("AF2L") On 0
+sbn D HASH("AF3L") On 0
+sbn D HASH("AF4L") On 0
+sbn D HASH("AF1Q") On 0
+sbn D HASH("AF2Q") On 0
+sbn D HASH("AF3Q") On 0
+sbn D HASH("AF4Q") On 0
+sbn D HASH("AFT") On 0
+sbn D HASH("AFP") On 0
+sbn D HASH("AFIN") On 0
+sbn D HASH("AFOUT") On 0
+
+yield
+j main
+```
+```
+
+This is **77 lines**, so safely under the 128-line limit.
+
+What changed:
+
+```
+```
+AFMASTER read now checks:
+    Lever  = StructureLogicSwitch
+    Switch = StructureLogicSwitch2
+
+It reads:
+    Open
+
+not:
+    Setting
+```
+```
+
+The IC housing definitions also now cover both normal and compact housings:
+
+```
+ic10
+
+```
+define H -128473777
+define HC 2037291645
+```
+```
+
+Those correspond to `StructureCircuitHousing` and `StructureCircuitHousingCompact`. [Stationeers Wiki](https://stationeers-wiki.com/IC_Housing?utm_source=chatgpt.com)
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+yeah, fixed. last thing, i added two dials, AFGIN and AFGOUT. We need to use these to set the gas in/out on the AF, and they should be persisted/respected upon reboot
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 14s
+
+Friend, use this updated **AFCTRL** script.
+
+Important changes:
+
+1.  `AFGIN` dial drives `AF.SettingInput`.
+
+2.  `AFGOUT` dial drives `AF.SettingOutput`.
+
+3.  The off-state **does not zero** `SettingInput` / `SettingOutput` anymore.
+
+4.  The dials are read **every tick**, even when `AFMASTER` is off, so after an IC reboot the furnace gets the persisted dial values again.
+
+
+The Dial exposes `Setting` as its integer knob value, and the Advanced Furnace exposes writable `SettingInput` and `SettingOutput`. [Stationeers Wiki+1](https://stationeers-wiki.com/Logic_Switch?utm_source=chatgpt.com)
+
+Labels:
+
+```
+```
+Advanced Furnace: AF
+Control IC Housing: AFCTRL
+Visualization IC Housing: AFVIZ
+
+Master Switch/Lever: AFMASTER
+Activate Button:     AFACT
+Mold Lever:          AFMOLD
+Vent Lever:          AFVNTL
+Gas In Dial:         AFGIN
+Gas Out Dial:        AFGOUT
+Active Vent:         AFVNT
+
+Optional named lights:
+AFLIGHT1
+AFLIGHT2
+AFLIGHT3
+AFLIGHT4
+```
+```
+
+```
+ic10
+
+```
+define F 545937711
+define B 491845673
+define LV 1220484876
+define SW 321604921
+define DI 554524804
+define V HASH("StructureActiveVent")
+define H -128473777
+define HC 2037291645
+define WL HASH("StructureWallLight")
+define LT HASH("StructureLight")
+
+define AF HASH("AF")
+define BA HASH("AFACT")
+define LM HASH("AFMOLD")
+define VL HASH("AFVNTL")
+define MA HASH("AFMASTER")
+define VN HASH("AFVNT")
+define VZ HASH("AFVIZ")
+define GI HASH("AFGIN")
+define GO HASH("AFGOUT")
+
+main:
+lbn r5 LV MA Open Maximum
+sgtz r5 r5
+lbn r6 SW MA Open Maximum
+sgtz r6 r6
+or r5 r5 r6
+sgtz r5 r5
+
+lbn r7 DI GI Setting Maximum
+sbn F AF SettingInput r7
+lbn r8 DI GO Setting Maximum
+sbn F AF SettingOutput r8
+
+sbn F AF On r5
+sbn H VZ On r5
+sbn HC VZ On r5
+
+sbn WL HASH("AFLIGHT1") On r5
+sbn WL HASH("AFLIGHT2") On r5
+sbn WL HASH("AFLIGHT3") On r5
+sbn WL HASH("AFLIGHT4") On r5
+sbn LT HASH("AFLIGHT1") On r5
+sbn LT HASH("AFLIGHT2") On r5
+sbn LT HASH("AFLIGHT3") On r5
+sbn LT HASH("AFLIGHT4") On r5
+
+beqz r5 off
+
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+
+lbn r1 LV LM Open Maximum
+sgtz r1 r1
+sbn F AF Open r1
+
+lbn r2 LV VL Open Maximum
+sgtz r2 r2
+sbn V VN On r2
+
+yield
+j main
+
+off:
+sbn F AF Activate 0
+sbn F AF Open 0
+sbn V VN On 0
+
+yield
+j main
+```
+```
+
+Set the dial `Mode` with the screwdriver to whatever max range you want. The IC only reads each dial’s `Setting`; it does not overwrite the dial mode, so your gas in/out settings live in the physical dials and survive IC reboot/reload.
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+Turning AFMASTER off does not seem to be turning off the AFT, AFP etc. Consoles?
+
+Show moreShow less
+
+ChatGPT:
+
+Thought for 24s
+
+Yes, friend. That is because the latest **AFCTRL** script I gave you accidentally removed the display shutdown block.
+
+Turning `AFVIZ` off only stops the visualization IC from updating. It does **not** automatically turn off the LED displays it was controlling. Those displays keep their last `On` state unless something explicitly writes `On = 0` to them. LED displays expose writable `On`, `Setting`, `Mode`, and `Color`, so the control IC has to shut them off directly.
+
+Use this replacement **AFCTRL** script:
+
+```
+ic10
+
+```
+define F 545937711
+define B 491845673
+define LV 1220484876
+define SW 321604921
+define DI 554524804
+define V HASH("StructureActiveVent")
+define H -128473777
+define HC 2037291645
+define D HASH("StructureConsoleLED1x2")
+define WL HASH("StructureWallLight")
+define LT HASH("StructureLight")
+
+define AF HASH("AF")
+define BA HASH("AFACT")
+define LM HASH("AFMOLD")
+define VL HASH("AFVNTL")
+define MA HASH("AFMASTER")
+define VN HASH("AFVNT")
+define VZ HASH("AFVIZ")
+define GI HASH("AFGIN")
+define GO HASH("AFGOUT")
+
+main:
+lbn r5 LV MA Open Maximum
+sgtz r5 r5
+lbn r6 SW MA Open Maximum
+sgtz r6 r6
+or r5 r5 r6
+sgtz r5 r5
+
+lbn r7 DI GI Setting Maximum
+sbn F AF SettingInput r7
+lbn r8 DI GO Setting Maximum
+sbn F AF SettingOutput r8
+
+beqz r5 off
+
+sbn F AF On 1
+sbn H VZ On 1
+sbn HC VZ On 1
+
+sbn WL HASH("AFLIGHT1") On 1
+sbn WL HASH("AFLIGHT2") On 1
+sbn WL HASH("AFLIGHT3") On 1
+sbn WL HASH("AFLIGHT4") On 1
+sbn LT HASH("AFLIGHT1") On 1
+sbn LT HASH("AFLIGHT2") On 1
+sbn LT HASH("AFLIGHT3") On 1
+sbn LT HASH("AFLIGHT4") On 1
+
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+
+lbn r1 LV LM Open Maximum
+sgtz r1 r1
+sbn F AF Open r1
+
+lbn r2 LV VL Open Maximum
+sgtz r2 r2
+sbn V VN On r2
+
+yield
+j main
+
+off:
+sbn F AF On 0
+sbn F AF Activate 0
+sbn F AF Open 0
+sbn V VN On 0
+sbn H VZ On 0
+sbn HC VZ On 0
+
+sbn WL HASH("AFLIGHT1") On 0
+sbn WL HASH("AFLIGHT2") On 0
+sbn WL HASH("AFLIGHT3") On 0
+sbn WL HASH("AFLIGHT4") On 0
+sbn LT HASH("AFLIGHT1") On 0
+sbn LT HASH("AFLIGHT2") On 0
+sbn LT HASH("AFLIGHT3") On 0
+sbn LT HASH("AFLIGHT4") On 0
+
+sbn D HASH("AF1L") On 0
+sbn D HASH("AF2L") On 0
+sbn D HASH("AF3L") On 0
+sbn D HASH("AF4L") On 0
+sbn D HASH("AF1Q") On 0
+sbn D HASH("AF2Q") On 0
+sbn D HASH("AF3Q") On 0
+sbn D HASH("AF4Q") On 0
+sbn D HASH("AFT") On 0
+sbn D HASH("AFP") On 0
+sbn D HASH("AFIN") On 0
+sbn D HASH("AFOUT") On 0
+
+yield
+j main
+```
+```
+
+This preserves the dial values because it still does this every tick, even when master is off:
+
+```
+ic10
+
+```
+lbn r7 DI GI Setting Maximum
+sbn F AF SettingInput r7
+lbn r8 DI GO Setting Maximum
+sbn F AF SettingOutput r8
+```
+```
+
+But it now explicitly kills:
+
+```
+```
+AF1L AF2L AF3L AF4L
+AF1Q AF2Q AF3Q AF4Q
+AFT AFP AFIN AFOUT
+```
+```
+
+One important check: this line assumes those consoles are **medium LED displays**:
+
+```
+ic10
+
+```
+define D HASH("StructureConsoleLED1x2")
+```
+```
+
+If `AFT`, `AFP`, etc. are small or large LED displays, this script will not hit them. In that case, replace `D` with the actual prefab type shown in Stationpedia for the display size you used.
+
+You:
+
+1\. the viz script is not setting the color of the reagent LEDs correctly, the LEDs dont even seem to be turned on by the viz script. Do we need to split the viz script into 2 since we're at 128 lines? Seems like we're getting bugs as a result of you trying to dance around these constraints 2. the ctrl script is not turning the lights off when the switch is off
+
+Show moreShow less
+
+2/2
+
+ChatGPT:
+
+You’re right on both counts, friend. The 128-line pressure caused bad engineering: the viz IC should be split, and the control script should explicitly target your exact named light device types rather than hoping one generic type matches.
+
+Thought for 2m 53s
+
+Yes, friend. Split it. The old viz script was trying to do too much under the 128-line / 90-char IC10 limit, and the device-type ambiguity made it fragile. IC10 named batch writes still need the **correct prefab hash plus name hash**; the name alone is not enough. `sbn deviceHash nameHash logicType value` only hits devices with both the matching type and matching label. [Stationeers Wiki](https://stationeers-wiki.com/IC10)
+
+Also: for reagent color swatches, use **Console LED Displays**, not Kit(Lights) LEDs. Console LED displays expose writable `On`, `Setting`, `Mode`, and `Color`; Kit(Lights) devices only expose `On` and `Lock`, so they are bad for dynamic reagent color mapping. [Stationeers Wiki+1](https://stationeers-wiki.com/Console)
+
+## New labels
+
+Use these exact labels:
+
+```
+```
+Advanced Furnace: AF
+
+Reagent color displays:
+AF1L
+AF2L
+AF3L
+AF4L
+
+Reagent quantity displays:
+AF1Q
+AF2Q
+AF3Q
+AF4Q
+
+Status displays:
+AFT
+AFP
+AFIN
+AFOUT
+
+Viz IC housings:
+AFVIZLED
+AFVIZNUM
+
+All furnace-room lights controlled by master:
+AFLIGHT
+```
+```
+
+For the room lights, label **all** furnace-area lights `AFLIGHT`. That is still safe on a shared network because the script uses named batch writes, but it avoids needing `AFLIGHT1`, `AFLIGHT2`, etc.
+
+---
+
+# IC 1: `AFVIZLED`
+
+Put this in the housing named `AFVIZLED`.
+
+This only controls the four reagent color displays: `AF1L` through `AF4L`.
+
+It supports:
+
+```
+```
+Small LED Display  = StructureConsoleLED5
+Medium LED Display = StructureConsoleLED1x2
+Large LED Display  = StructureConsoleLED1x3
+```
+```
+
+Those are the current Stationpedia prefab names reported for LED display sizes. [Steam Community](https://steamcommunity.com/app/544550/discussions/0/658215953538257164/?l=brazilian&utm_source=chatgpt.com)
+
+```
+ic10
+
+```
+define F 545937711
+define DS HASH("StructureConsoleLED5")
+define DM HASH("StructureConsoleLED1x2")
+define DL HASH("StructureConsoleLED1x3")
+define AF HASH("AF")
+
+main:
+lbn r11 F AF ReferenceId Maximum
+ble r11 ninf wait
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r4 7
+move r5 7
+move r6 7
+move r7 7
+move r8 0
+move r12 0
+move r14 0
+lr r9 r11 Contents HASH("Iron")
+move r13 4
+jal add
+lr r9 r11 Contents HASH("Hydrocarbon")
+move r13 7
+jal add
+lr r9 r11 Contents HASH("Carbon")
+move r13 8
+jal add
+lr r9 r11 Contents HASH("Copper")
+move r13 3
+jal add
+lr r9 r11 Contents HASH("Cobalt")
+move r13 0
+jal add
+lr r9 r11 Contents HASH("Gold")
+move r13 5
+jal add
+lr r9 r11 Contents HASH("Nickel")
+move r13 2
+jal add
+lr r9 r11 Contents HASH("Silver")
+move r13 6
+jal add
+lr r9 r11 Contents HASH("Lead")
+move r13 1
+jal add
+lr r9 r11 Contents HASH("Silicon")
+move r13 9
+jal add
+lr r9 r11 Contents HASH("Steel")
+move r13 4
+jal add
+beqz r12 show
+move r0 1
+move r1 1
+move r2 1
+move r3 1
+move r4 4
+move r5 4
+move r6 4
+move r7 4
+show:
+sgtz r15 r0
+move r8 HASH("AF1L")
+move r10 r4
+jal wl
+sgtz r15 r1
+move r8 HASH("AF2L")
+move r10 r5
+jal wl
+sgtz r15 r2
+move r8 HASH("AF3L")
+move r10 r6
+jal wl
+sgtz r15 r3
+move r8 HASH("AF4L")
+move r10 r7
+jal wl
+wait:
+yield
+j main
+add:
+blez r9 ret
+add r14 r14 1
+bge r8 4 of
+move rr8 r9
+add r15 r8 4
+move rr15 r13
+add r8 r8 1
+j ret
+of:
+move r12 1
+ret:
+j ra
+wl:
+sbn DS r8 On r15
+sbn DM r8 On r15
+sbn DL r8 On r15
+sbn DS r8 Setting r15
+sbn DM r8 Setting r15
+sbn DL r8 Setting r15
+sbn DS r8 Mode 0
+sbn DM r8 Mode 0
+sbn DL r8 Mode 0
+sbn DS r8 Color r10
+sbn DM r8 Color r10
+sbn DL r8 Color r10
+j ra
+```
+```
+
+Line count: **109**.
+
+---
+
+# IC 2: `AFVIZNUM`
+
+Put this in the housing named `AFVIZNUM`.
+
+This controls:
+
+```
+```
+AF1Q AF2Q AF3Q AF4Q
+AFT AFP AFIN AFOUT
+```
+```
+
+```
+ic10
+
+```
+define F 545937711
+define DS HASH("StructureConsoleLED5")
+define DM HASH("StructureConsoleLED1x2")
+define DL HASH("StructureConsoleLED1x3")
+define AF HASH("AF")
+
+main:
+lbn r11 F AF ReferenceId Maximum
+ble r11 ninf wait
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r8 0
+move r12 0
+move r14 0
+lr r9 r11 Contents HASH("Iron")
+jal add
+lr r9 r11 Contents HASH("Hydrocarbon")
+jal add
+lr r9 r11 Contents HASH("Carbon")
+jal add
+lr r9 r11 Contents HASH("Copper")
+jal add
+lr r9 r11 Contents HASH("Cobalt")
+jal add
+lr r9 r11 Contents HASH("Gold")
+jal add
+lr r9 r11 Contents HASH("Nickel")
+jal add
+lr r9 r11 Contents HASH("Silver")
+jal add
+lr r9 r11 Contents HASH("Lead")
+jal add
+lr r9 r11 Contents HASH("Silicon")
+jal add
+lr r9 r11 Contents HASH("Steel")
+jal add
+beqz r12 qty
+move r0 r14
+move r1 0
+move r2 0
+move r3 0
+qty:
+move r10 0
+sgtz r15 r0
+move r8 HASH("AF1Q")
+move r9 r0
+jal wd
+sgtz r15 r1
+move r8 HASH("AF2Q")
+move r9 r1
+jal wd
+sgtz r15 r2
+move r8 HASH("AF3Q")
+move r9 r2
+jal wd
+sgtz r15 r3
+move r8 HASH("AF4Q")
+move r9 r3
+jal wd
+l r9 r11 Temperature
+move r8 HASH("AFT")
+move r10 3
+move r15 1
+jal wd
+l r9 r11 Pressure
+move r8 HASH("AFP")
+move r10 14
+move r15 1
+jal wd
+l r9 r11 SettingInput
+move r8 HASH("AFIN")
+move r10 12
+move r15 1
+jal wd
+l r9 r11 SettingOutput
+move r8 HASH("AFOUT")
+move r10 12
+move r15 1
+jal wd
+wait:
+yield
+j main
+add:
+blez r9 ret
+add r14 r14 1
+bge r8 4 of
+move rr8 r9
+add r8 r8 1
+j ret
+of:
+move r12 1
+ret:
+j ra
+wd:
+sbn DS r8 On r15
+sbn DM r8 On r15
+sbn DL r8 On r15
+sbn DS r8 Setting r9
+sbn DM r8 Setting r9
+sbn DL r8 Setting r9
+sbn DS r8 Mode r10
+sbn DM r8 Mode r10
+sbn DL r8 Mode r10
+j ra
+```
+```
+
+Line count: **106**.
+
+---
+
+# Replacement `AFCTRL`
+
+This fixes the light issue by targeting **all Kit(Lights) prefab variants** listed on the wiki, but only when the device label is exactly `AFLIGHT`. The Kit(Lights) page lists multiple prefab hashes for regular, long, long-wide, angled, battery, round, angled-round, and small-round lights, and they all expose `On`. [Stationeers Wiki](https://stationeers-wiki.com/Kit_%28Lights%29)
+
+Put this in your control housing. It does **not** turn off its own housing.
+
+```
+ic10
+
+```
+define F 545937711
+define B 491845673
+define LV 1220484876
+define SW 321604921
+define DI 554524804
+define V HASH("StructureActiveVent")
+define H -128473777
+define HC 2037291645
+define DS HASH("StructureConsoleLED5")
+define DM HASH("StructureConsoleLED1x2")
+define DL HASH("StructureConsoleLED1x3")
+define W0 -1860064656
+define W1 797794350
+define W2 555215790
+define W3 1847265835
+define W4 -1306415132
+define W5 1514476632
+define W6 1592905386
+define W7 1436121888
+define AF HASH("AF")
+define BA HASH("AFACT")
+define LM HASH("AFMOLD")
+define VL HASH("AFVNTL")
+define MA HASH("AFMASTER")
+define VN HASH("AFVNT")
+define GI HASH("AFGIN")
+define GO HASH("AFGOUT")
+define LGT HASH("AFLIGHT")
+define V0 HASH("AFVIZ")
+define V1 HASH("AFVIZLED")
+define V2 HASH("AFVIZNUM")
+
+main:
+lbn r5 LV MA Open Maximum
+sgtz r5 r5
+lbn r6 SW MA Open Maximum
+sgtz r6 r6
+or r5 r5 r6
+sgtz r5 r5
+lbn r7 DI GI Setting Maximum
+sbn F AF SettingInput r7
+lbn r8 DI GO Setting Maximum
+sbn F AF SettingOutput r8
+beqz r5 off
+sbn F AF On 1
+sbn H V0 On 1
+sbn HC V0 On 1
+sbn H V1 On 1
+sbn HC V1 On 1
+sbn H V2 On 1
+sbn HC V2 On 1
+move r9 1
+jal lgt
+lbn r0 B BA Activate Maximum
+sgtz r0 r0
+sbn F AF Activate r0
+lbn r1 LV LM Open Maximum
+sgtz r1 r1
+sbn F AF Open r1
+lbn r2 LV VL Open Maximum
+sgtz r2 r2
+sbn V VN On r2
+yield
+j main
+
+off:
+sbn F AF On 0
+sbn F AF Activate 0
+sbn F AF Open 0
+sbn V VN On 0
+sbn H V0 On 0
+sbn HC V0 On 0
+sbn H V1 On 0
+sbn HC V1 On 0
+sbn H V2 On 0
+sbn HC V2 On 0
+move r9 0
+jal lgt
+move r8 HASH("AF1L")
+jal offd
+move r8 HASH("AF2L")
+jal offd
+move r8 HASH("AF3L")
+jal offd
+move r8 HASH("AF4L")
+jal offd
+move r8 HASH("AF1Q")
+jal offd
+move r8 HASH("AF2Q")
+jal offd
+move r8 HASH("AF3Q")
+jal offd
+move r8 HASH("AF4Q")
+jal offd
+move r8 HASH("AFT")
+jal offd
+move r8 HASH("AFP")
+jal offd
+move r8 HASH("AFIN")
+jal offd
+move r8 HASH("AFOUT")
+jal offd
+yield
+j main
+
+lgt:
+sbn W0 LGT On r9
+sbn W1 LGT On r9
+sbn W2 LGT On r9
+sbn W3 LGT On r9
+sbn W4 LGT On r9
+sbn W5 LGT On r9
+sbn W6 LGT On r9
+sbn W7 LGT On r9
+j ra
+
+offd:
+sbn DS r8 On 0
+sbn DM r8 On 0
+sbn DL r8 On 0
+j ra
+```
+```
+
+Line count: **121**.
+
+## What this fixes
+
+The old viz script likely failed because `AF1L`\-`AF4L` were not the exact device type the script was writing to. This version writes to all three LED display sizes by label.
+
+The old ctrl script likely failed to turn room lights off because `StructureWallLight` did not cover the actual light variant you placed. This version writes `On` to all listed Kit(Lights) prefab variants, but only for lights named `AFLIGHT`.
+
+Color map:
+
+```
+```
+Blue    = Cobalt
+Gray    = Lead
+Green   = Nickel
+Orange  = Copper
+Red     = Iron or Steel
+Yellow  = Gold
+White   = Silver
+Black   = Hydrocarbon / coal
+Brown   = Carbon / charcoal
+Khaki   = Silicon
+```
+```
+
+Overflow behavior: if more than 4 tracked reagents are present, all four reagent color displays go red, and `AF1Q` shows the number of detected reagent types.
+
+![](https://www.google.com/s2/favicons?domain=https://steamcommunity.com&sz=32)
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+you can afford more line width, we don't need to obfuscate the code so much, but keep the labels of our external devices the same i don't want to change all those. also the lights we are using for the reagent color LEDs are "LED" prefab hash 1944485013. I say this because the reagent lights are still not being controlled correctly
+
+Show moreShow less
+
+ChatGPT:
+
+Good catch. If the reagent color indicators are actual `LED` devices with prefab hash `1944485013`, the viz LED script must write to that type, not console LED display types. I’ll keep your existing labels and make the scripts readable while staying under 128 lines.
+
+Thought for 2m 29s
+
+Friend, yes. The root bug is now clear:
+
+```
+```
+AF1L..AF4L are not console LED displays.
+They are actual LED lights with prefab hash 1944485013.
+```
+```
+
+So the viz script must write:
+
+```
+ic10
+
+```
+sbn 1944485013 HASH("AF1L") On 1
+sbn 1944485013 HASH("AF1L") Color 4
+```
+```
+
+not `StructureConsoleLED1x2`. The Stationeers wiki confirms `LED` has prefab hash `1944485013` and exposes writable `On`, `Lock`, and `Color`. [Stationeers Wiki](https://stationeers-wiki.com/LED?utm_source=chatgpt.com) Named batch writes still require both prefab hash and name hash, so the type mismatch would make the write silently miss your reagent LEDs. [Stationeers Wiki+1](https://stationeers-wiki.com/IC10/instructions?utm_source=chatgpt.com)
+
+Use the existing labels:
+
+```
+```
+AF
+AF1L AF2L AF3L AF4L
+AF1Q AF2Q AF3Q AF4Q
+AFT AFP AFIN AFOUT
+AFMASTER AFACT AFMOLD AFVNTL AFVNT
+AFGIN AFGOUT
+AFVIZ
+AFVIZNUM
+AFLIGHT / AFLIGHT1 / AFLIGHT2 / AFLIGHT3 / AFLIGHT4
+```
+```
+
+Put the **reagent LED script** in your existing `AFVIZ` housing. Put the **quantity/status script** in the second housing named `AFVIZNUM`.
+
+## AFVIZ: reagent LED color script
+
+```
+ic10
+
+```
+define FurnaceType 545937711
+define ReagentLed 1944485013
+define FurnaceName HASH("AF")
+define RowOneLight HASH("AF1L")
+define RowTwoLight HASH("AF2L")
+define RowThreeLight HASH("AF3L")
+define RowFourLight HASH("AF4L")
+
+main:
+lbn r11 FurnaceType FurnaceName ReferenceId Maximum
+ble r11 ninf furnace_missing
+
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r4 7
+move r5 7
+move r6 7
+move r7 7
+move r8 0
+move r12 0
+move r14 0
+
+lr r9 r11 Contents HASH("Iron")
+move r13 4
+jal add_reagent
+lr r9 r11 Contents HASH("Hydrocarbon")
+move r13 7
+jal add_reagent
+lr r9 r11 Contents HASH("Carbon")
+move r13 8
+jal add_reagent
+lr r9 r11 Contents HASH("Copper")
+move r13 3
+jal add_reagent
+lr r9 r11 Contents HASH("Cobalt")
+move r13 0
+jal add_reagent
+lr r9 r11 Contents HASH("Gold")
+move r13 5
+jal add_reagent
+lr r9 r11 Contents HASH("Nickel")
+move r13 2
+jal add_reagent
+lr r9 r11 Contents HASH("Silver")
+move r13 6
+jal add_reagent
+lr r9 r11 Contents HASH("Lead")
+move r13 1
+jal add_reagent
+lr r9 r11 Contents HASH("Silicon")
+move r13 9
+jal add_reagent
+lr r9 r11 Contents HASH("Steel")
+move r13 4
+jal add_reagent
+
+beqz r12 write_rows
+move r0 1
+move r1 1
+move r2 1
+move r3 1
+move r4 4
+move r5 4
+move r6 4
+move r7 4
+
+write_rows:
+move r8 RowOneLight
+move r9 r0
+move r10 r4
+jal write_light
+move r8 RowTwoLight
+move r9 r1
+move r10 r5
+jal write_light
+move r8 RowThreeLight
+move r9 r2
+move r10 r6
+jal write_light
+move r8 RowFourLight
+move r9 r3
+move r10 r7
+jal write_light
+yield
+j main
+
+furnace_missing:
+move r8 RowOneLight
+jal turn_off_light
+move r8 RowTwoLight
+jal turn_off_light
+move r8 RowThreeLight
+jal turn_off_light
+move r8 RowFourLight
+jal turn_off_light
+yield
+j main
+
+add_reagent:
+blez r9 add_done
+add r14 r14 1
+bge r8 4 mark_overflow
+move rr8 r9
+add r15 r8 4
+move rr15 r13
+add r8 r8 1
+j add_done
+mark_overflow:
+move r12 1
+add_done:
+j ra
+
+write_light:
+sgtz r15 r9
+sbn ReagentLed r8 Color r10
+sbn ReagentLed r8 On r15
+j ra
+
+turn_off_light:
+sbn ReagentLed r8 On 0
+j ra
+```
+```
+
+Color map is still:
+
+```
+```
+0 blue    = cobalt
+1 gray    = lead
+2 green   = nickel
+3 orange  = copper
+4 red     = iron / steel / overflow
+5 yellow  = gold
+6 white   = silver
+7 black   = hydrocarbon / coal
+8 brown   = carbon / charcoal
+9 khaki   = silicon
+```
+```
+
+These are the standard Stationeers data network color IDs. [Stationeers Wiki](https://stationeers-wiki.com/Data_Network_Colors?utm_source=chatgpt.com)
+
+## AFCTRL: corrected master/control script
+
+This fixes the shutdown side too. It now explicitly turns off `AF1L..AF4L` using prefab hash `1944485013`, and it also includes that same LED type in the room-light shutdown path.
+
+```
+ic10
+
+```
+define FurnaceType 545937711
+define ButtonType 491845673
+define LeverType 1220484876
+define SwitchType 321604921
+define DialType 554524804
+define VentType HASH("StructureActiveVent")
+define HousingType -128473777
+define CompactHousingType 2037291645
+define LedLightType 1944485013
+define SmallDisplayType HASH("StructureConsoleLED5")
+define MediumDisplayType HASH("StructureConsoleLED1x2")
+define LargeDisplayType HASH("StructureConsoleLED1x3")
+define FurnaceName HASH("AF")
+define ActivateButtonName HASH("AFACT")
+define MoldLeverName HASH("AFMOLD")
+define VentLeverName HASH("AFVNTL")
+define MasterSwitchName HASH("AFMASTER")
+define VentName HASH("AFVNT")
+define GasInDialName HASH("AFGIN")
+define GasOutDialName HASH("AFGOUT")
+define VizLedName HASH("AFVIZ")
+define VizNumName HASH("AFVIZNUM")
+main:
+lbn r5 LeverType MasterSwitchName Open Maximum
+sgtz r5 r5
+lbn r6 SwitchType MasterSwitchName Open Maximum
+sgtz r6 r6
+or r5 r5 r6
+sgtz r5 r5
+lbn r7 DialType GasInDialName Setting Maximum
+sbn FurnaceType FurnaceName SettingInput r7
+lbn r8 DialType GasOutDialName Setting Maximum
+sbn FurnaceType FurnaceName SettingOutput r8
+beqz r5 master_off
+sbn FurnaceType FurnaceName On 1
+sbn HousingType VizLedName On 1
+sbn CompactHousingType VizLedName On 1
+sbn HousingType VizNumName On 1
+sbn CompactHousingType VizNumName On 1
+move r9 1
+jal set_all_room_lights
+lbn r0 ButtonType ActivateButtonName Activate Maximum
+sgtz r0 r0
+sbn FurnaceType FurnaceName Activate r0
+lbn r1 LeverType MoldLeverName Open Maximum
+sgtz r1 r1
+sbn FurnaceType FurnaceName Open r1
+lbn r2 LeverType VentLeverName Open Maximum
+sgtz r2 r2
+sbn VentType VentName On r2
+yield
+j main
+master_off:
+sbn FurnaceType FurnaceName On 0
+sbn FurnaceType FurnaceName Activate 0
+sbn FurnaceType FurnaceName Open 0
+sbn VentType VentName On 0
+sbn HousingType VizLedName On 0
+sbn CompactHousingType VizLedName On 0
+sbn HousingType VizNumName On 0
+sbn CompactHousingType VizNumName On 0
+move r9 0
+jal set_all_room_lights
+move r8 HASH("AF1L")
+jal turn_off_reagent_led
+move r8 HASH("AF2L")
+jal turn_off_reagent_led
+move r8 HASH("AF3L")
+jal turn_off_reagent_led
+move r8 HASH("AF4L")
+jal turn_off_reagent_led
+move r8 HASH("AF1Q")
+jal turn_off_display
+move r8 HASH("AF2Q")
+jal turn_off_display
+move r8 HASH("AF3Q")
+jal turn_off_display
+move r8 HASH("AF4Q")
+jal turn_off_display
+move r8 HASH("AFT")
+jal turn_off_display
+move r8 HASH("AFP")
+jal turn_off_display
+move r8 HASH("AFIN")
+jal turn_off_display
+move r8 HASH("AFOUT")
+jal turn_off_display
+yield
+j main
+set_all_room_lights:
+move r8 HASH("AFLIGHT")
+jal set_one_room_light
+move r8 HASH("AFLIGHT1")
+jal set_one_room_light
+move r8 HASH("AFLIGHT2")
+jal set_one_room_light
+move r8 HASH("AFLIGHT3")
+jal set_one_room_light
+move r8 HASH("AFLIGHT4")
+jal set_one_room_light
+j ra
+set_one_room_light:
+sbn LedLightType r8 On r9
+sbn -1860064656 r8 On r9
+sbn 797794350 r8 On r9
+sbn 555215790 r8 On r9
+sbn 1847265835 r8 On r9
+sbn -1306415132 r8 On r9
+sbn 1514476632 r8 On r9
+sbn 1592905386 r8 On r9
+sbn 1436121888 r8 On r9
+j ra
+turn_off_reagent_led:
+sbn LedLightType r8 On 0
+j ra
+turn_off_display:
+sbn SmallDisplayType r8 On 0
+sbn MediumDisplayType r8 On 0
+sbn LargeDisplayType r8 On 0
+j ra
+```
+```
+
+This one is **120 lines**, so it has margin under 128.
+
+## Fast sanity test
+
+Before running the full viz script, you can temporarily put this tiny script in any housing on the same network:
+
+```
+ic10
+
+```
+main:
+sbn 1944485013 HASH("AF1L") Color 4
+sbn 1944485013 HASH("AF1L") On 1
+yield
+j main
+```
+```
+
+If `AF1L` does not turn red, then the issue is not the viz logic. It means one of these is wrong:
+
+```
+```
+the device is not actually named AF1L
+the device is not actually prefab 1944485013
+the LED is not on the data network
+the LED is unpowered
+```
+```
+
+If the sanity test works, the corrected `AFVIZ` script above should control the reagent LEDs.
+
+![](https://www.google.com/s2/favicons?domain=https://steamcommunity.com&sz=32)
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources
+
+You:
+
+dude. i thought we were splitting AFVIZLED and AFVIZNUM?
+
+Show moreShow less
+
+ChatGPT:
+
+Yes, friend. You caught a regression. The split should be `AFVIZLED` + `AFVIZNUM`; my last version incorrectly drifted back toward `AFVIZ`. The controller should switch those two housings, not a generic `AFVIZ`.
+
+Thought for 2m 3s
+
+Yes, friend. Correct split is:
+
+```
+```
+AFCTRL    = control/master/power script
+AFVIZLED  = reagent color LEDs only
+AFVIZNUM  = reagent quantity + temp/pressure/in/out screens
+```
+```
+
+Rename the old `AFVIZ` housing to `AFVIZLED`, and add/keep the second housing as `AFVIZNUM`. The external panel labels stay the same: `AF1L`, `AF1Q`, `AFT`, etc.
+
+The key fix: `AF1L` through `AF4L` are real **LED** devices, prefab hash `1944485013`, so the LED viz script writes to that type. The LED page confirms that prefab hash and that `On` and `Color` are writable. [Stationeers Wiki](https://stationeers-wiki.com/LED?utm_source=chatgpt.com) Named batch writes still need both the prefab hash and the name hash, so wrong prefab type means the write misses even if the label is correct. [Stationeers Wiki](https://stationeers-wiki.com/IC10?utm_source=chatgpt.com)
+
+## `AFVIZLED` script
+
+Put this in the housing named `AFVIZLED`.
+
+```
+ic10
+
+```
+define FurnaceType 545937711
+define ReagentLedType 1944485013
+define FurnaceName HASH("AF")
+define RowOneLedName HASH("AF1L")
+define RowTwoLedName HASH("AF2L")
+define RowThreeLedName HASH("AF3L")
+define RowFourLedName HASH("AF4L")
+main:
+lbn r11 FurnaceType FurnaceName ReferenceId Maximum
+ble r11 ninf wait
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r4 7
+move r5 7
+move r6 7
+move r7 7
+move r8 0
+move r12 0
+move r14 0
+lr r9 r11 Contents HASH("Iron")
+move r13 4
+jal add_reagent
+lr r9 r11 Contents HASH("Hydrocarbon")
+move r13 7
+jal add_reagent
+lr r9 r11 Contents HASH("Carbon")
+move r13 8
+jal add_reagent
+lr r9 r11 Contents HASH("Copper")
+move r13 3
+jal add_reagent
+lr r9 r11 Contents HASH("Cobalt")
+move r13 0
+jal add_reagent
+lr r9 r11 Contents HASH("Gold")
+move r13 5
+jal add_reagent
+lr r9 r11 Contents HASH("Nickel")
+move r13 2
+jal add_reagent
+lr r9 r11 Contents HASH("Silver")
+move r13 6
+jal add_reagent
+lr r9 r11 Contents HASH("Lead")
+move r13 1
+jal add_reagent
+lr r9 r11 Contents HASH("Silicon")
+move r13 9
+jal add_reagent
+lr r9 r11 Contents HASH("Steel")
+move r13 4
+jal add_reagent
+beqz r12 write_rows
+move r0 1
+move r1 1
+move r2 1
+move r3 1
+move r4 4
+move r5 4
+move r6 4
+move r7 4
+write_rows:
+move r8 RowOneLedName
+move r9 r0
+move r10 r4
+jal write_light
+move r8 RowTwoLedName
+move r9 r1
+move r10 r5
+jal write_light
+move r8 RowThreeLedName
+move r9 r2
+move r10 r6
+jal write_light
+move r8 RowFourLedName
+move r9 r3
+move r10 r7
+jal write_light
+wait:
+yield
+j main
+add_reagent:
+blez r9 add_done
+add r14 r14 1
+beq r8 0 slot_zero
+beq r8 1 slot_one
+beq r8 2 slot_two
+beq r8 3 slot_three
+move r12 1
+j add_done
+slot_zero:
+move r0 r9
+move r4 r13
+move r8 1
+j add_done
+slot_one:
+move r1 r9
+move r5 r13
+move r8 2
+j add_done
+slot_two:
+move r2 r9
+move r6 r13
+move r8 3
+j add_done
+slot_three:
+move r3 r9
+move r7 r13
+move r8 4
+add_done:
+j ra
+write_light:
+sgtz r15 r9
+sbn ReagentLedType r8 Color r10
+sbn ReagentLedType r8 On r15
+j ra
+```
+```
+
+## `AFVIZNUM` script
+
+Put this in the housing named `AFVIZNUM`.
+
+```
+ic10
+
+```
+define FurnaceType 545937711
+define SmallDisplayType HASH("StructureConsoleLED5")
+define MediumDisplayType HASH("StructureConsoleLED1x2")
+define LargeDisplayType HASH("StructureConsoleLED1x3")
+define FurnaceName HASH("AF")
+main:
+lbn r11 FurnaceType FurnaceName ReferenceId Maximum
+ble r11 ninf wait
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r8 0
+move r12 0
+move r14 0
+lr r9 r11 Contents HASH("Iron")
+jal add_reagent
+lr r9 r11 Contents HASH("Hydrocarbon")
+jal add_reagent
+lr r9 r11 Contents HASH("Carbon")
+jal add_reagent
+lr r9 r11 Contents HASH("Copper")
+jal add_reagent
+lr r9 r11 Contents HASH("Cobalt")
+jal add_reagent
+lr r9 r11 Contents HASH("Gold")
+jal add_reagent
+lr r9 r11 Contents HASH("Nickel")
+jal add_reagent
+lr r9 r11 Contents HASH("Silver")
+jal add_reagent
+lr r9 r11 Contents HASH("Lead")
+jal add_reagent
+lr r9 r11 Contents HASH("Silicon")
+jal add_reagent
+lr r9 r11 Contents HASH("Steel")
+jal add_reagent
+beqz r12 write_quantities
+move r0 r14
+move r1 0
+move r2 0
+move r3 0
+write_quantities:
+move r8 HASH("AF1Q")
+move r9 r0
+move r10 0
+jal write_quantity
+move r8 HASH("AF2Q")
+move r9 r1
+move r10 0
+jal write_quantity
+move r8 HASH("AF3Q")
+move r9 r2
+move r10 0
+jal write_quantity
+move r8 HASH("AF4Q")
+move r9 r3
+move r10 0
+jal write_quantity
+l r9 r11 Temperature
+move r8 HASH("AFT")
+move r10 3
+move r15 1
+jal write_display
+l r9 r11 Pressure
+move r8 HASH("AFP")
+move r10 14
+move r15 1
+jal write_display
+l r9 r11 SettingInput
+move r8 HASH("AFIN")
+move r10 12
+move r15 1
+jal write_display
+l r9 r11 SettingOutput
+move r8 HASH("AFOUT")
+move r10 12
+move r15 1
+jal write_display
+wait:
+yield
+j main
+add_reagent:
+blez r9 add_done
+add r14 r14 1
+beq r8 0 slot_zero
+beq r8 1 slot_one
+beq r8 2 slot_two
+beq r8 3 slot_three
+move r12 1
+j add_done
+slot_zero:
+move r0 r9
+move r8 1
+j add_done
+slot_one:
+move r1 r9
+move r8 2
+j add_done
+slot_two:
+move r2 r9
+move r8 3
+j add_done
+slot_three:
+move r3 r9
+move r8 4
+add_done:
+j ra
+write_quantity:
+sgtz r15 r9
+write_display:
+sbn SmallDisplayType r8 On r15
+sbn MediumDisplayType r8 On r15
+sbn LargeDisplayType r8 On r15
+sbn SmallDisplayType r8 Setting r9
+sbn MediumDisplayType r8 Setting r9
+sbn LargeDisplayType r8 Setting r9
+sbn SmallDisplayType r8 Mode r10
+sbn MediumDisplayType r8 Mode r10
+sbn LargeDisplayType r8 Mode r10
+j ra
+```
+```
+
+## Corrected `AFCTRL` script
+
+This one switches both viz housings: `AFVIZLED` and `AFVIZNUM`. It also turns off `AF1L` through `AF4L` as actual LED devices, not console displays.
+
+The switch/lever/button/dial hashes here match the current Logic Switch page: lever `1220484876`, switch `321604921`, button `491845673`, dial `554524804`; dials expose `Setting`, switches/levers expose `Open`. [Stationeers Wiki](https://stationeers-wiki.com/Logic_Switch?utm_source=chatgpt.com) The light shutoff path includes the `LED` prefab plus the listed Kit(Lights) prefab hashes for regular, long, wide, angled, battery, round, angled round, and small round lights. [Stationeers Wiki](https://stationeers-wiki.com/Kit_%28Lights%29)
+
+```
+ic10
+
+```
+define FurnaceType 545937711
+define ButtonType 491845673
+define LeverType 1220484876
+define SwitchType 321604921
+define DialType 554524804
+define VentType HASH("StructureActiveVent")
+define HousingType -128473777
+define CompactHousingType 2037291645
+define LedType 1944485013
+define SmallDisplayType HASH("StructureConsoleLED5")
+define MediumDisplayType HASH("StructureConsoleLED1x2")
+define LargeDisplayType HASH("StructureConsoleLED1x3")
+define FurnaceName HASH("AF")
+define ActivateButtonName HASH("AFACT")
+define MoldLeverName HASH("AFMOLD")
+define VentLeverName HASH("AFVNTL")
+define MasterSwitchName HASH("AFMASTER")
+define VentName HASH("AFVNT")
+define GasInDialName HASH("AFGIN")
+define GasOutDialName HASH("AFGOUT")
+define VizLedName HASH("AFVIZLED")
+define VizNumName HASH("AFVIZNUM")
+main:
+lbn r5 LeverType MasterSwitchName Open Maximum
+sgtz r5 r5
+lbn r6 SwitchType MasterSwitchName Open Maximum
+sgtz r6 r6
+or r5 r5 r6
+sgtz r5 r5
+lbn r7 DialType GasInDialName Setting Maximum
+sbn FurnaceType FurnaceName SettingInput r7
+lbn r8 DialType GasOutDialName Setting Maximum
+sbn FurnaceType FurnaceName SettingOutput r8
+beqz r5 master_off
+sbn FurnaceType FurnaceName On 1
+sbn HousingType VizLedName On 1
+sbn CompactHousingType VizLedName On 1
+sbn HousingType VizNumName On 1
+sbn CompactHousingType VizNumName On 1
+move r9 1
+jal set_all_lights
+lbn r0 ButtonType ActivateButtonName Activate Maximum
+sgtz r0 r0
+sbn FurnaceType FurnaceName Activate r0
+lbn r1 LeverType MoldLeverName Open Maximum
+sgtz r1 r1
+sbn FurnaceType FurnaceName Open r1
+lbn r2 LeverType VentLeverName Open Maximum
+sgtz r2 r2
+sbn VentType VentName On r2
+yield
+j main
+master_off:
+sbn FurnaceType FurnaceName On 0
+sbn FurnaceType FurnaceName Activate 0
+sbn FurnaceType FurnaceName Open 0
+sbn VentType VentName On 0
+sbn HousingType VizLedName On 0
+sbn CompactHousingType VizLedName On 0
+sbn HousingType VizNumName On 0
+sbn CompactHousingType VizNumName On 0
+move r9 0
+jal set_all_lights
+move r8 HASH("AF1L")
+jal turn_off_led
+move r8 HASH("AF2L")
+jal turn_off_led
+move r8 HASH("AF3L")
+jal turn_off_led
+move r8 HASH("AF4L")
+jal turn_off_led
+move r8 HASH("AF1Q")
+jal turn_off_display
+move r8 HASH("AF2Q")
+jal turn_off_display
+move r8 HASH("AF3Q")
+jal turn_off_display
+move r8 HASH("AF4Q")
+jal turn_off_display
+move r8 HASH("AFT")
+jal turn_off_display
+move r8 HASH("AFP")
+jal turn_off_display
+move r8 HASH("AFIN")
+jal turn_off_display
+move r8 HASH("AFOUT")
+jal turn_off_display
+yield
+j main
+set_all_lights:
+move r8 HASH("AFLGT")
+jal set_one_light
+move r8 HASH("AFLIGHT")
+jal set_one_light
+move r8 HASH("AFLIGHT1")
+jal set_one_light
+move r8 HASH("AFLIGHT2")
+jal set_one_light
+move r8 HASH("AFLIGHT3")
+jal set_one_light
+move r8 HASH("AFLIGHT4")
+jal set_one_light
+j ra
+set_one_light:
+sbn LedType r8 On r9
+sbn -1860064656 r8 On r9
+sbn 797794350 r8 On r9
+sbn 555215790 r8 On r9
+sbn 1847265835 r8 On r9
+sbn -1306415132 r8 On r9
+sbn 1514476632 r8 On r9
+sbn 1592905386 r8 On r9
+sbn 1436121888 r8 On r9
+j ra
+turn_off_led:
+sbn LedType r8 On 0
+j ra
+turn_off_display:
+sbn SmallDisplayType r8 On 0
+sbn MediumDisplayType r8 On 0
+sbn LargeDisplayType r8 On 0
+j ra
+```
+```
+
+Line counts:
+
+```
+```
+AFVIZLED = 118 lines
+AFVIZNUM = 121 lines
+AFCTRL   = 122 lines
+```
+```
+
+The corrected housing names are the important part:
+
+```
+```
+AFVIZLED, not AFVIZ
+AFVIZNUM, not AFVIZ
+```
+```
+
+![](https://www.google.com/s2/favicons?domain=https://stationeers-wiki.com&sz=32)
+
+Sources

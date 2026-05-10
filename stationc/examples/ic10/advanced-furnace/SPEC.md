@@ -19,11 +19,13 @@ expression used by the script.
 
 | label | prefab | hash | role | fields used |
 | --- | --- | --- | --- | --- |
-| AFCTRL | StructureCircuitHousing | -128473777 | control IC housing | self only; never written |
+| AFCTRL | StructureCircuitHousing | -128473777 | control IC housing | On |
+| AFSAFETY | StructureCircuitHousing | -128473777 | always-on safety IC housing | self only; never written |
 | AFVIZLED | StructureCircuitHousing | -128473777 | reagent LED IC housing | On |
 | AFVIZNUM | StructureCircuitHousing | -128473777 | numeric display IC housing | On |
 
-Compact IC housings are not part of this spec.
+Compact IC housings are not part of this spec. `AFSAFETY` is not controlled by
+`AFMASTER`.
 
 ## Controlled Devices
 
@@ -42,6 +44,8 @@ Compact IC housings are not part of this spec.
 | AFVNTL | StructureLogicSwitch | 1220484876 | vent lever | Open |
 | AFGIN | StructureLogicDial | 554524804 | gas input setting | Setting |
 | AFGOUT | StructureLogicDial | 554524804 | gas output setting | Setting |
+| AFSFTRST | StructureLogicButton | 491845673 | safety trip reset button | Activate |
+| AFSFTTST | StructureLogicButton | 491845673 | safety test button | Activate |
 
 ## Reagent Rows
 
@@ -73,6 +77,43 @@ Only medium LED displays are part of this spec.
 | --- | --- | --- | --- | --- |
 | AFLIGHT | LED | 1944485013 | furnace-room indicator light | On |
 | AFLIGHT2 | StructureLight | -1860064656 | furnace-room light | On |
+
+## Safety Devices
+
+| label | prefab | hash | role | fields used |
+| --- | --- | --- | --- | --- |
+| AFTRIP | LED | 1944485013 | latched safety trip indicator | On |
+| AFSFTALRT | StructureFlashingLight | -1535893860 | room-visible safety alert | On |
+
+## Safety Rules
+
+`AFSAFETY` must remain powered while the furnace panel exists. It never writes
+`AF.On`.
+
+| name | value | behavior |
+| --- | --- | --- |
+| MaxTemperature | 2273 | trips safety when `AF.Temperature` is greater than this |
+| MaxPressure | 180000 | trips safety when `AF.Pressure` is greater than this |
+| ResetTemperature | 2073 | reset is allowed only at or below this temperature |
+| ResetPressure | 120000 | reset is allowed only at or below this pressure |
+| VentOpen | 100 | safe furnace output setting |
+
+When `AFMASTER` is off or safety is tripped, the panel forces
+`AF.Activate = 0`, `AF.Open = 0`, `AF.SettingInput = 0`, and
+`AF.SettingOutput = 100`.
+
+`AFSFTTST` enters the same latched trip path as unsafe temperature or
+pressure. While the trip latch is active, `AFTRIP` and `AFSFTALRT` are on,
+and `AFCTRL` is off so it cannot fight `AFSAFETY`. Visualization chips remain
+on while safety is tripped.
+
+When `AFSFTRST` is pressed while temperature and pressure are both below their
+reset thresholds, the safety chip clears `AFTRIP`, `AFSFTALRT`,
+`AF.Activate`, `AF.Open`, `AF.SettingInput`, and `AF.SettingOutput` to `0`,
+then turns `AFCTRL` back on.
+
+`AFCTRL` also treats `AFSFTRST` as a zero-output hold so it cannot reapply dial
+settings in the same tick that `AFSAFETY` re-enables it.
 
 ## Reagent Scan Order And Colors
 

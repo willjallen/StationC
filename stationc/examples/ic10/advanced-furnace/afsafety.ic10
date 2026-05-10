@@ -1,0 +1,75 @@
+define FurnaceType 545937711
+define SwitchType 321604921
+define ButtonType 491845673
+define HousingType -128473777
+define LedType 1944485013
+define AlertType -1535893860
+define FurnaceName HASH("AF")
+define MasterSwitchName HASH("AFMASTER")
+define ResetButtonName HASH("AFSFTRST")
+define TestButtonName HASH("AFSFTTST")
+define TripLedName HASH("AFTRIP")
+define AlertName HASH("AFSFTALRT")
+define CtrlName HASH("AFCTRL")
+define MaxTemperature 2273
+define MaxPressure 180000
+define ResetTemperature 2073
+define ResetPressure 120000
+define VentOpen 100
+main:
+lbn r0 SwitchType MasterSwitchName Open Maximum
+sgtz r0 r0
+lbn r1 FurnaceType FurnaceName ReferenceId Maximum
+ble r1 ninf wait
+l r2 r1 Temperature
+l r3 r1 Pressure
+lbn r5 ButtonType TestButtonName Activate Maximum
+sgtz r5 r5
+bgtz r5 trip
+bgt r2 MaxTemperature trip
+bgt r3 MaxPressure trip
+lbn r4 ButtonType ResetButtonName Activate Maximum
+sgtz r4 r4
+bgtz r4 try_reset
+beqz r15 check_master
+j safe
+try_reset:
+bgt r2 ResetTemperature check_latch
+bgt r3 ResetPressure check_latch
+move r15 0
+j reset_clear
+check_latch:
+beqz r15 check_master
+j safe
+check_master:
+beqz r0 safe
+sbn LedType TripLedName On 0
+sbn AlertType AlertName On 0
+yield
+j main
+trip:
+move r15 1
+safe:
+sbn FurnaceType FurnaceName Activate 0
+sbn FurnaceType FurnaceName Open 0
+sbn FurnaceType FurnaceName SettingInput 0
+sbn FurnaceType FurnaceName SettingOutput VentOpen
+sbn LedType TripLedName On r15
+sbn AlertType AlertName On r15
+beqz r15 wait
+sbn HousingType CtrlName On 0
+yield
+j main
+reset_clear:
+sbn FurnaceType FurnaceName Activate 0
+sbn FurnaceType FurnaceName Open 0
+sbn FurnaceType FurnaceName SettingInput 0
+sbn FurnaceType FurnaceName SettingOutput 0
+sbn LedType TripLedName On 0
+sbn AlertType AlertName On 0
+sbn HousingType CtrlName On 1
+yield
+j main
+wait:
+yield
+j main
