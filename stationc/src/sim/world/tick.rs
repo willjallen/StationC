@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::sim::ic10::{ReferenceId, TickResult};
+use crate::sim::ic10::{ReagentMode, ReferenceId, TickResult};
 
 /// Default IC10 instruction budget for one world tick.
 pub const IC10_INSTRUCTIONS_PER_TICK: u32 = 128;
@@ -59,6 +59,15 @@ pub enum WorldAccessTarget {
         slot: usize,
         /// Slot logic field name.
         field: String,
+    },
+    /// A reagent amount on a device or housing body.
+    DeviceReagent {
+        /// Device or housing body that was accessed.
+        reference_id: ReferenceId,
+        /// Reagent storage area.
+        mode: ReagentMode,
+        /// Raw IC10 reagent hash value bits.
+        reagent_hash: u64,
     },
     /// A device or housing stack address.
     DeviceStack {
@@ -156,7 +165,9 @@ pub(super) fn diagnostics_for_access(access: &[WorldAccessEvent]) -> Vec<WorldDi
         if event.operation == WorldAccessOperation::Read
             && matches!(
                 event.target,
-                WorldAccessTarget::DeviceLogic { .. } | WorldAccessTarget::DeviceSlotLogic { .. }
+                WorldAccessTarget::DeviceLogic { .. }
+                    | WorldAccessTarget::DeviceSlotLogic { .. }
+                    | WorldAccessTarget::DeviceReagent { .. }
             )
         {
             let key = (event.actor, event.target.clone());

@@ -4,7 +4,7 @@ use std::{error::Error as StdError, fmt};
 
 use crate::sim::ic10::{
     BatchMode, BatchSlotLoadRequest, DevicePort, DeviceTarget, EnvironmentFault, Ic10Environment,
-    ReferenceId,
+    ReagentMode, ReferenceId,
 };
 
 use super::{
@@ -412,6 +412,28 @@ impl Ic10Environment for WorldIc10Context<'_> {
             },
         );
         Ok(())
+    }
+
+    fn load_reagent(
+        &mut self,
+        target: DeviceTarget,
+        mode: ReagentMode,
+        reagent_hash: f64,
+    ) -> Result<f64, EnvironmentFault> {
+        let reference_id = self.reference_id_for_target(target)?;
+        let value = {
+            let device = self.resolve_reference_mut(reference_id)?;
+            device.load_reagent(mode, reagent_hash)
+        };
+        self.record_access(
+            WorldAccessOperation::Read,
+            WorldAccessTarget::DeviceReagent {
+                reference_id,
+                mode,
+                reagent_hash: reagent_hash.to_bits(),
+            },
+        );
+        Ok(value)
     }
 
     fn device_is_set(&mut self, target: DeviceTarget) -> bool {

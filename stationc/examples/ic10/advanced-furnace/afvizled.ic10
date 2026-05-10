@@ -1,0 +1,118 @@
+define FurnaceType 545937711
+define ReagentLedType 1944485013
+define FurnaceName HASH("AF")
+define RowOneLedName HASH("AF1L")
+define RowTwoLedName HASH("AF2L")
+define RowThreeLedName HASH("AF3L")
+define RowFourLedName HASH("AF4L")
+main:
+lbn r11 FurnaceType FurnaceName ReferenceId Maximum
+ble r11 ninf wait
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r4 7
+move r5 7
+move r6 7
+move r7 7
+move r8 0
+move r12 0
+move r14 0
+lr r9 r11 Contents HASH("Iron")
+move r13 4
+jal add_reagent
+lr r9 r11 Contents HASH("Hydrocarbon")
+move r13 7
+jal add_reagent
+lr r9 r11 Contents HASH("Carbon")
+move r13 8
+jal add_reagent
+lr r9 r11 Contents HASH("Copper")
+move r13 3
+jal add_reagent
+lr r9 r11 Contents HASH("Cobalt")
+move r13 0
+jal add_reagent
+lr r9 r11 Contents HASH("Gold")
+move r13 5
+jal add_reagent
+lr r9 r11 Contents HASH("Nickel")
+move r13 2
+jal add_reagent
+lr r9 r11 Contents HASH("Silver")
+move r13 6
+jal add_reagent
+lr r9 r11 Contents HASH("Lead")
+move r13 1
+jal add_reagent
+lr r9 r11 Contents HASH("Silicon")
+move r13 9
+jal add_reagent
+lr r9 r11 Contents HASH("Steel")
+move r13 4
+jal add_reagent
+beqz r12 write_rows
+move r0 1
+move r1 1
+move r2 1
+move r3 1
+move r4 4
+move r5 4
+move r6 4
+move r7 4
+write_rows:
+move r8 RowOneLedName
+move r9 r0
+move r10 r4
+jal write_light
+move r8 RowTwoLedName
+move r9 r1
+move r10 r5
+jal write_light
+move r8 RowThreeLedName
+move r9 r2
+move r10 r6
+jal write_light
+move r8 RowFourLedName
+move r9 r3
+move r10 r7
+jal write_light
+wait:
+yield
+j main
+add_reagent:
+blez r9 add_done
+add r14 r14 1
+beq r8 0 slot_zero
+beq r8 1 slot_one
+beq r8 2 slot_two
+beq r8 3 slot_three
+move r12 1
+j add_done
+slot_zero:
+move r0 r9
+move r4 r13
+move r8 1
+j add_done
+slot_one:
+move r1 r9
+move r5 r13
+move r8 2
+j add_done
+slot_two:
+move r2 r9
+move r6 r13
+move r8 3
+j add_done
+slot_three:
+move r3 r9
+move r7 r13
+move r8 4
+add_done:
+j ra
+write_light:
+sgtz r15 r9
+sbn ReagentLedType r8 Color r10
+sbn ReagentLedType r8 On r15
+j ra

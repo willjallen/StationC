@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::sim::ic10::{EnvironmentFault, ReferenceId, STACK_SIZE};
+use crate::sim::ic10::{EnvironmentFault, ReagentMode, ReferenceId, STACK_SIZE};
 
 use super::device_logic;
 
@@ -13,6 +13,7 @@ pub struct Device {
     prefab_hash: f64,
     name_hash: f64,
     logic: HashMap<String, LogicField>,
+    reagents: HashMap<ReagentMode, HashMap<u64, f64>>,
     slots: HashMap<usize, DeviceSlot>,
     stack: [f64; STACK_SIZE],
 }
@@ -136,6 +137,7 @@ impl Device {
             prefab_hash: 0.0,
             name_hash: 0.0,
             logic: HashMap::new(),
+            reagents: HashMap::new(),
             slots: HashMap::new(),
             stack: [0.0; STACK_SIZE],
         }
@@ -169,6 +171,16 @@ impl Device {
         self
     }
 
+    /// Sets the device prefab hash returned by `PrefabHash`.
+    pub fn set_prefab_hash(&mut self, value: f64) {
+        self.prefab_hash = value;
+    }
+
+    /// Sets the device name hash returned by `NameHash`.
+    pub fn set_name_hash(&mut self, value: f64) {
+        self.name_hash = value;
+    }
+
     /// Returns the assigned `ReferenceId`, if the device has been added to a world.
     #[must_use]
     pub const fn reference_id(&self) -> Option<ReferenceId> {
@@ -190,6 +202,27 @@ impl Device {
     pub fn set_read_only_logic(&mut self, field: impl Into<String>, value: f64) {
         self.logic
             .insert(field.into(), LogicField::read_only(value));
+    }
+
+    /// Adds a reagent amount and returns the device.
+    #[must_use]
+    pub fn with_reagent(mut self, mode: ReagentMode, reagent_hash: f64, value: f64) -> Self {
+        self.set_reagent(mode, reagent_hash, value);
+        self
+    }
+
+    /// Reads a reagent amount, returning zero when the reagent is absent.
+    #[must_use]
+    pub fn reagent(&self, mode: ReagentMode, reagent_hash: f64) -> f64 {
+        self.load_reagent(mode, reagent_hash)
+    }
+
+    /// Sets or creates a reagent amount.
+    pub fn set_reagent(&mut self, mode: ReagentMode, reagent_hash: f64, value: f64) {
+        self.reagents
+            .entry(mode)
+            .or_default()
+            .insert(reagent_key(reagent_hash), value);
     }
 
     /// Adds a slot at `index` and returns the device.
@@ -293,6 +326,14 @@ impl Device {
         Ok(())
     }
 
+    pub(super) fn load_reagent(&self, mode: ReagentMode, reagent_hash: f64) -> f64 {
+        self.reagents
+            .get(&mode)
+            .and_then(|reagents| reagents.get(&reagent_key(reagent_hash)))
+            .copied()
+            .unwrap_or(0.0)
+    }
+
     pub(super) fn can_load_logic(&self, field: &str) -> bool {
         match field {
             device_logic::REFERENCE_ID => self.reference_id.is_some(),
@@ -358,4 +399,8 @@ impl Default for Device {
     fn default() -> Self {
         Self::new()
     }
+}
+
+const fn reagent_key(reagent_hash: f64) -> u64 {
+    reagent_hash.to_bits()
 }

@@ -101,7 +101,8 @@ Status values:
 | Batch logic stores | `sb`, `sbn` | Yes | Supports prefab hash, optional name hash, dynamic fields, and dynamic values. |
 | Slot logic | `ls`, `ss` | Yes | Supports pin, alias, `db`, indirect pin, dynamic slot index, and dynamic slot fields; direct `ReferenceId` slot access is rejected per the docs. |
 | Batch slot logic | `lbs`, `lbns`, `sbs` | Yes | Supports prefab hash, optional name hash for reads, dynamic slot index, dynamic slot fields, and all four read modes. |
-| Reagents | `lr`, `rmap` | No | Reagent storage and mapping are not modeled. |
+| Reagents | `lr` | Yes | Scenario devices can expose `Contents`, `Required`, and `Recipe` reagent amounts. Missing reagents read as `0`. |
+| Reagent mapping | `rmap` | No | Reagent-to-prefab mapping is not modeled. |
 | Device metadata | `ReferenceId`, `PrefabHash`, `NameHash` | Yes | Metadata fields are read-only. |
 | Arbitrary logic fields | Stationpedia logic values | Partial | Scenarios can attach arbitrary numeric fields; device behavior is scenario-defined by design. |
 | Cable network channels | `d0:0`, `db:1`, `Channel0` through `Channel7` | No | Logic type constants exist, but connection operands and network storage do not. |
@@ -112,4 +113,4 @@ Status values:
 
 | Area | Mnemonics |
 | --- | --- |
-| Reagents | `lr`, `rmap` |
+| Reagent mapping | `rmap` |

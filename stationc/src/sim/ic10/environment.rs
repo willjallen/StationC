@@ -134,6 +134,37 @@ impl BatchMode {
     }
 }
 
+/// Reagent storage area addressed by IC10 reagent instructions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReagentMode {
+    /// Current reagent contents.
+    Contents,
+    /// Required reagent amount.
+    Required,
+    /// Recipe reagent amount.
+    Recipe,
+}
+
+impl ReagentMode {
+    /// Resolves the IC10 numeric reagent-mode representation.
+    #[must_use]
+    pub fn from_f64(value: f64) -> Option<Self> {
+        if !value.is_finite() || value.fract() != 0.0 {
+            return None;
+        }
+        if !(0.0..=2.0).contains(&value) {
+            return None;
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        match value as i32 {
+            0 => Some(Self::Contents),
+            1 => Some(Self::Required),
+            2 => Some(Self::Recipe),
+            _ => None,
+        }
+    }
+}
+
 /// Request for a batch slot logic read.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BatchSlotLoadRequest<'a> {
@@ -164,6 +195,8 @@ pub enum EnvironmentOperation {
     BatchStoreSlotLogic,
     /// Write a device logic field.
     StoreLogic,
+    /// Read a reagent amount from a device.
+    LoadReagent,
     /// Read a device slot logic field.
     LoadSlotLogic,
     /// Write a device slot logic field.
@@ -185,6 +218,7 @@ impl fmt::Display for EnvironmentOperation {
             Self::BatchStoreLogic => formatter.write_str("batch store logic"),
             Self::BatchStoreSlotLogic => formatter.write_str("batch store slot logic"),
             Self::StoreLogic => formatter.write_str("store logic"),
+            Self::LoadReagent => formatter.write_str("load reagent"),
             Self::LoadSlotLogic => formatter.write_str("load slot logic"),
             Self::StoreSlotLogic => formatter.write_str("store slot logic"),
             Self::ClearStack => formatter.write_str("clear stack"),
@@ -328,6 +362,18 @@ pub trait Ic10Environment {
         value: f64,
     ) -> Result<(), EnvironmentFault>;
 
+    /// Reads a reagent amount from a device target.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EnvironmentFault`] if the target cannot be read.
+    fn load_reagent(
+        &mut self,
+        target: DeviceTarget,
+        mode: ReagentMode,
+        reagent_hash: f64,
+    ) -> Result<f64, EnvironmentFault>;
+
     /// Returns whether a device target currently resolves to a world object.
     #[must_use]
     fn device_is_set(&mut self, target: DeviceTarget) -> bool;
@@ -462,6 +508,17 @@ impl Ic10Environment for NoEnvironment {
     ) -> Result<(), EnvironmentFault> {
         Err(EnvironmentFault::WorldContextRequired {
             operation: EnvironmentOperation::StoreLogic,
+        })
+    }
+
+    fn load_reagent(
+        &mut self,
+        _target: DeviceTarget,
+        _mode: ReagentMode,
+        _reagent_hash: f64,
+    ) -> Result<f64, EnvironmentFault> {
+        Err(EnvironmentFault::WorldContextRequired {
+            operation: EnvironmentOperation::LoadReagent,
         })
     }
 

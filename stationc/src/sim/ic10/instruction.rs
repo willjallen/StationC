@@ -3,7 +3,7 @@
 use std::fmt;
 
 use super::{
-    environment::{BatchMode, DevicePort},
+    environment::{BatchMode, DevicePort, ReagentMode},
     registers::RegisterRef,
 };
 
@@ -116,6 +116,12 @@ pub(super) enum Instruction {
         field: LogicFieldOperand,
         value: ValueOperand,
     },
+    LoadReagent {
+        destination: RegisterRef,
+        device: DeviceOperand,
+        mode: ReagentModeOperand,
+        reagent_hash: ValueOperand,
+    },
     LoadSlotLogic {
         destination: RegisterRef,
         device: DevicePortOperand,
@@ -174,6 +180,12 @@ pub(super) enum LogicFieldOperand {
 #[derive(Debug, Clone)]
 pub(super) enum BatchModeOperand {
     Direct(BatchMode),
+    Dynamic(ValueOperand),
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum ReagentModeOperand {
+    Direct(ReagentMode),
     Dynamic(ValueOperand),
 }
 

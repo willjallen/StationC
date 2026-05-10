@@ -3,12 +3,12 @@
 use std::{collections::HashMap, fmt};
 
 use super::{
-    environment::{BatchMode, DevicePort},
+    environment::{BatchMode, DevicePort, ReagentMode},
     instruction::{
         ApproxOperation, ApproxZeroOperation, BatchModeOperand, BinaryOperation, BranchCondition,
         CompareOperation, CompareZeroOperation, DeviceLogicOperation, DeviceOperand,
         DevicePortOperand, Instruction, JumpTarget, LogicFieldOperand, ProgramInstruction,
-        TernaryOperation, UnaryOperation, ValueOperand,
+        ReagentModeOperand, TernaryOperation, UnaryOperation, ValueOperand,
     },
     logic_types,
     program::Program,
@@ -278,6 +278,7 @@ fn parse_instruction(
         "move" | "rand" | "select" => parse_register_instruction(tokens, context),
         "push" | "pop" | "peek" | "poke" => parse_local_stack_instruction(tokens, context),
         "l" | "s" | "ld" | "sd" => parse_device_logic_instruction(tokens, context),
+        "lr" => parse_reagent_instruction(tokens, context),
         "ls" | "ss" => parse_slot_logic_instruction(tokens, context),
         "sdns" | "sdse" => parse_device_predicate_instruction(tokens, context),
         "lb" | "lbn" | "lbs" | "lbns" | "sb" | "sbn" | "sbs" => {
@@ -448,6 +449,19 @@ fn parse_store_logic_instruction(
         device,
         field: parse_logic_field(tokens[2], context),
         value: parse_value(tokens[3], context),
+    })
+}
+
+fn parse_reagent_instruction(
+    tokens: &[&str],
+    context: ParseContext<'_>,
+) -> Result<Instruction, ParseError> {
+    require_len(tokens, 5, context.line_number)?;
+    Ok(Instruction::LoadReagent {
+        destination: parse_register(tokens[1], context)?,
+        device: parse_device_operand(tokens[2], context),
+        mode: parse_reagent_mode(tokens[3], context),
+        reagent_hash: parse_value(tokens[4], context),
     })
 }
 
@@ -1145,6 +1159,15 @@ fn parse_batch_mode(token: &str, context: ParseContext<'_>) -> BatchModeOperand 
         "Minimum" => BatchModeOperand::Direct(BatchMode::Minimum),
         "Maximum" => BatchModeOperand::Direct(BatchMode::Maximum),
         _ => BatchModeOperand::Dynamic(parse_value(token, context)),
+    }
+}
+
+fn parse_reagent_mode(token: &str, context: ParseContext<'_>) -> ReagentModeOperand {
+    match token {
+        "Contents" => ReagentModeOperand::Direct(ReagentMode::Contents),
+        "Required" => ReagentModeOperand::Direct(ReagentMode::Required),
+        "Recipe" => ReagentModeOperand::Direct(ReagentMode::Recipe),
+        _ => ReagentModeOperand::Dynamic(parse_value(token, context)),
     }
 }
 

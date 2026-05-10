@@ -15,7 +15,7 @@ use std::{env, error::Error as StdError, fmt, fs, path::PathBuf, process::ExitCo
 
 pub use environment::{
     BatchMode, BatchSlotLoadRequest, DevicePort, DeviceTarget, EnvironmentFault,
-    EnvironmentOperation, Ic10Environment, NoEnvironment, ReferenceId,
+    EnvironmentOperation, Ic10Environment, NoEnvironment, ReagentMode, ReferenceId,
 };
 use ic10::{Ic10 as CoreIc10, RunStop, SingleStepStop};
 use parser::parse_program;
@@ -346,6 +346,8 @@ pub enum ErrorCode {
     InvalidDevicePortIndex,
     /// A numeric value could not be used as a batch mode.
     InvalidBatchMode,
+    /// A numeric value could not be used as a reagent mode.
+    InvalidReagentMode,
     /// A numeric value could not be used as a sleep duration.
     InvalidSleepDuration,
     /// An operand expected to be an integer was not an integer.
@@ -463,6 +465,7 @@ const fn ic10_fault_code(error: &ic10::Ic10Fault) -> ErrorCode {
         ic10::Ic10Fault::InvalidReferenceId(_) => ErrorCode::InvalidReferenceId,
         ic10::Ic10Fault::InvalidDevicePortIndex(_) => ErrorCode::InvalidDevicePortIndex,
         ic10::Ic10Fault::InvalidBatchMode(_) => ErrorCode::InvalidBatchMode,
+        ic10::Ic10Fault::InvalidReagentMode(_) => ErrorCode::InvalidReagentMode,
         ic10::Ic10Fault::InvalidSleepDuration(_) => ErrorCode::InvalidSleepDuration,
         ic10::Ic10Fault::InvalidIntegerOperand(_) => ErrorCode::InvalidIntegerOperand,
         ic10::Ic10Fault::InvalidShiftOperand(_) => ErrorCode::InvalidShiftOperand,

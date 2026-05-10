@@ -5,13 +5,13 @@ use std::{cmp::Ordering, fmt};
 use super::{
     environment::{
         BatchMode, BatchSlotLoadRequest, DevicePort, DeviceTarget, EnvironmentFault,
-        Ic10Environment, NoEnvironment, ReferenceId,
+        Ic10Environment, NoEnvironment, ReagentMode, ReferenceId,
     },
     instruction::{
         ApproxOperation, ApproxZeroOperation, BatchModeOperand, BinaryOperation, BranchCondition,
         CompareOperation, CompareZeroOperation, DeviceLogicOperation, DeviceOperand,
-        DevicePortOperand, Instruction, JumpTarget, LogicFieldOperand, TernaryOperation,
-        UnaryOperation, ValueOperand,
+        DevicePortOperand, Instruction, JumpTarget, LogicFieldOperand, ReagentModeOperand,
+        TernaryOperation, UnaryOperation, ValueOperand,
     },
     logic_types,
     program::Program,
@@ -305,6 +305,12 @@ impl Ic10 {
                 field,
                 value,
             } => self.execute_store_logic(environment, &device, &field, &value),
+            Instruction::LoadReagent {
+                destination,
+                device,
+                mode,
+                reagent_hash,
+            } => self.execute_load_reagent(environment, destination, &device, &mode, &reagent_hash),
             Instruction::LoadSlotLogic {
                 destination,
                 device,
@@ -575,6 +581,22 @@ impl Ic10 {
         Ok(step_stop(environment))
     }
 
+    fn execute_load_reagent<E: Ic10Environment>(
+        &mut self,
+        environment: &mut E,
+        destination: RegisterRef,
+        device: &DeviceOperand,
+        mode: &ReagentModeOperand,
+        reagent_hash: &ValueOperand,
+    ) -> Result<StepStop, Ic10Fault> {
+        let target = self.device_target(device)?;
+        let mode = self.reagent_mode(mode)?;
+        let reagent_hash = self.value(reagent_hash)?;
+        let value = environment.load_reagent(target, mode, reagent_hash)?;
+        self.write(destination, value)?;
+        Ok(step_stop(environment))
+    }
+
     fn execute_load_slot_logic<E: Ic10Environment>(
         &mut self,
         environment: &mut E,
@@ -670,6 +692,16 @@ impl Ic10 {
             BatchModeOperand::Dynamic(value) => {
                 let value = self.value(value)?;
                 BatchMode::from_f64(value).ok_or(Ic10Fault::InvalidBatchMode(value))
+            }
+        }
+    }
+
+    fn reagent_mode(&self, operand: &ReagentModeOperand) -> Result<ReagentMode, Ic10Fault> {
+        match operand {
+            ReagentModeOperand::Direct(mode) => Ok(*mode),
+            ReagentModeOperand::Dynamic(value) => {
+                let value = self.value(value)?;
+                ReagentMode::from_f64(value).ok_or(Ic10Fault::InvalidReagentMode(value))
             }
         }
     }
@@ -1038,6 +1070,7 @@ pub(super) enum Ic10Fault {
     InvalidReferenceId(f64),
     InvalidDevicePortIndex(f64),
     InvalidBatchMode(f64),
+    InvalidReagentMode(f64),
     InvalidSleepDuration(f64),
     InvalidIntegerOperand(f64),
     InvalidShiftOperand(i64),
@@ -1070,6 +1103,7 @@ impl fmt::Display for Ic10Fault {
                 write!(formatter, "invalid device port index `{value}`")
             }
             Self::InvalidBatchMode(value) => write!(formatter, "invalid batch mode `{value}`"),
+            Self::InvalidReagentMode(value) => write!(formatter, "invalid reagent mode `{value}`"),
             Self::InvalidSleepDuration(value) => {
                 write!(formatter, "invalid sleep duration `{value}`")
             }

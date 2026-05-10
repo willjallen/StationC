@@ -1,0 +1,121 @@
+define FurnaceType 545937711
+define SmallDisplayType HASH("StructureConsoleLED5")
+define MediumDisplayType HASH("StructureConsoleLED1x2")
+define LargeDisplayType HASH("StructureConsoleLED1x3")
+define FurnaceName HASH("AF")
+main:
+lbn r11 FurnaceType FurnaceName ReferenceId Maximum
+ble r11 ninf wait
+move r0 0
+move r1 0
+move r2 0
+move r3 0
+move r8 0
+move r12 0
+move r14 0
+lr r9 r11 Contents HASH("Iron")
+jal add_reagent
+lr r9 r11 Contents HASH("Hydrocarbon")
+jal add_reagent
+lr r9 r11 Contents HASH("Carbon")
+jal add_reagent
+lr r9 r11 Contents HASH("Copper")
+jal add_reagent
+lr r9 r11 Contents HASH("Cobalt")
+jal add_reagent
+lr r9 r11 Contents HASH("Gold")
+jal add_reagent
+lr r9 r11 Contents HASH("Nickel")
+jal add_reagent
+lr r9 r11 Contents HASH("Silver")
+jal add_reagent
+lr r9 r11 Contents HASH("Lead")
+jal add_reagent
+lr r9 r11 Contents HASH("Silicon")
+jal add_reagent
+lr r9 r11 Contents HASH("Steel")
+jal add_reagent
+beqz r12 write_quantities
+move r0 r14
+move r1 0
+move r2 0
+move r3 0
+write_quantities:
+move r8 HASH("AF1Q")
+move r9 r0
+move r10 0
+jal write_quantity
+move r8 HASH("AF2Q")
+move r9 r1
+move r10 0
+jal write_quantity
+move r8 HASH("AF3Q")
+move r9 r2
+move r10 0
+jal write_quantity
+move r8 HASH("AF4Q")
+move r9 r3
+move r10 0
+jal write_quantity
+l r9 r11 Temperature
+move r8 HASH("AFT")
+move r10 3
+move r15 1
+jal write_display
+l r9 r11 Pressure
+move r8 HASH("AFP")
+move r10 14
+move r15 1
+jal write_display
+l r9 r11 SettingInput
+move r8 HASH("AFIN")
+move r10 12
+move r15 1
+jal write_display
+l r9 r11 SettingOutput
+move r8 HASH("AFOUT")
+move r10 12
+move r15 1
+jal write_display
+wait:
+yield
+j main
+add_reagent:
+blez r9 add_done
+add r14 r14 1
+beq r8 0 slot_zero
+beq r8 1 slot_one
+beq r8 2 slot_two
+beq r8 3 slot_three
+move r12 1
+j add_done
+slot_zero:
+move r0 r9
+move r8 1
+j add_done
+slot_one:
+move r1 r9
+move r8 2
+j add_done
+slot_two:
+move r2 r9
+move r8 3
+j add_done
+slot_three:
+move r3 r9
+move r8 4
+add_done:
+j ra
+write_quantity:
+sgtz r15 r9
+write_display:
+sbn SmallDisplayType r8 On r15
+sbn MediumDisplayType r8 On r15
+sbn LargeDisplayType r8 On r15
+sbn SmallDisplayType r8 Setting r9
+sbn MediumDisplayType r8 Setting r9
+sbn LargeDisplayType r8 Setting r9
+sbn SmallDisplayType r8 Mode r10
+sbn MediumDisplayType r8 Mode r10
+sbn LargeDisplayType r8 Mode r10
+j ra
