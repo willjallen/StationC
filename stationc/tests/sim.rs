@@ -4,5 +4,7 @@
 
 #[path = "sim/ic10/mod.rs"]
 mod ic10;
+#[path = "sim/scenarios/mod.rs"]
+mod scenarios;
 #[path = "sim/world/mod.rs"]
 mod world;

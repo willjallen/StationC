@@ -1,11 +1,11 @@
+use std::{error::Error as StdError, io};
+
 use stationc::sim::{
-    ic10::{DevicePort, ReagentMode},
-    world::{Device, World},
+    ic10::{ReagentMode, ReferenceId},
+    world::{Device, IcHousing, World},
 };
 
-use super::support::{
-    TestResult, assert_device_logic, assert_housing_logic, assert_housing_register, housing,
-};
+type TestResult<T = ()> = Result<T, Box<dyn StdError>>;
 
 const AFCTRL: &str = include_str!("../../../examples/ic10/advanced-furnace/afctrl.ic10");
 const AFVIZLED: &str = include_str!("../../../examples/ic10/advanced-furnace/afvizled.ic10");
@@ -18,31 +18,6 @@ const DIAL_TYPE: f64 = 554_524_804.0;
 const HOUSING_TYPE: f64 = -128_473_777.0;
 const LED_TYPE: f64 = 1_944_485_013.0;
 const KIT_LIGHT_TYPE: f64 = -1_860_064_656.0;
-
-#[test]
-fn lr_reads_reagent_contents_from_mock_device() -> TestResult {
-    let mut world = World::new();
-    let furnace = world.add_device(
-        Device::new()
-            .with_reagent(ReagentMode::Contents, hash("Iron"), 49.0)
-            .with_reagent(ReagentMode::Contents, hash("Copper"), 12.0),
-    );
-    let housing = world.add_ic10_housing(
-        "\
-lr r0 d0 Contents HASH(\"Iron\")
-lr r1 d0 Contents HASH(\"Copper\")
-lr r2 d0 Contents HASH(\"Nickel\")
-yield
-",
-    )?;
-    world.connect_pin(housing, DevicePort::D0, furnace)?;
-
-    world.tick()?;
-
-    assert_housing_register(&world, housing, 0, 49.0)?;
-    assert_housing_register(&world, housing, 1, 12.0)?;
-    assert_housing_register(&world, housing, 2, 0.0)
-}
 
 #[test]
 fn advanced_furnace_panel_scripts_fit_ic10_editor_limits() -> TestResult {
@@ -109,20 +84,20 @@ fn advanced_furnace_panel_mock_master_off_shuts_outputs_down() -> TestResult {
 
 #[derive(Debug, Clone, Copy)]
 struct MockIds {
-    furnace: stationc::sim::ic10::ReferenceId,
-    vent: stationc::sim::ic10::ReferenceId,
-    panel_led_one: stationc::sim::ic10::ReferenceId,
-    panel_led_two: stationc::sim::ic10::ReferenceId,
-    quantity_one: stationc::sim::ic10::ReferenceId,
-    quantity_two: stationc::sim::ic10::ReferenceId,
-    temperature: stationc::sim::ic10::ReferenceId,
-    pressure: stationc::sim::ic10::ReferenceId,
-    input: stationc::sim::ic10::ReferenceId,
-    output: stationc::sim::ic10::ReferenceId,
-    led_room_light: stationc::sim::ic10::ReferenceId,
-    kit_room_light: stationc::sim::ic10::ReferenceId,
-    viz_led_housing: stationc::sim::ic10::ReferenceId,
-    viz_num_housing: stationc::sim::ic10::ReferenceId,
+    furnace: ReferenceId,
+    vent: ReferenceId,
+    panel_led_one: ReferenceId,
+    panel_led_two: ReferenceId,
+    quantity_one: ReferenceId,
+    quantity_two: ReferenceId,
+    temperature: ReferenceId,
+    pressure: ReferenceId,
+    input: ReferenceId,
+    output: ReferenceId,
+    led_room_light: ReferenceId,
+    kit_room_light: ReferenceId,
+    viz_led_housing: ReferenceId,
+    viz_num_housing: ReferenceId,
 }
 
 fn mock_panel_world(master_on: bool) -> TestResult<(World, MockIds)> {
@@ -209,21 +184,70 @@ fn assert_script_limits(name: &str, source: &str) -> TestResult {
 
 fn assert_named_device_logic(
     world: &World,
-    reference_id: stationc::sim::ic10::ReferenceId,
+    reference_id: ReferenceId,
     name: &str,
     field: &str,
     expected: f64,
 ) -> TestResult {
     let device = world
         .device(reference_id)
-        .ok_or_else(|| format!("missing {name} device {}", reference_id.value()))?;
-    let actual = device
-        .logic(field)
-        .ok_or_else(|| format!("missing {name}.{field} on device {}", reference_id.value()))?;
+        .ok_or_else(|| test_error(format!("missing {name} device {}", reference_id.value())))?;
+    let actual = device.logic(field).ok_or_else(|| {
+        test_error(format!(
+            "missing {name}.{field} on device {}",
+            reference_id.value()
+        ))
+    })?;
     if numbers_close(actual, expected) {
         Ok(())
     } else {
-        Err(format!("expected {name}.{field}={expected}, got {actual}").into())
+        Err(test_error(format!(
+            "expected {name}.{field}={expected}, got {actual}"
+        )))
+    }
+}
+
+fn assert_device_logic(
+    world: &World,
+    reference_id: ReferenceId,
+    field: &str,
+    expected: f64,
+) -> TestResult {
+    let device = world
+        .device(reference_id)
+        .ok_or_else(|| test_error(format!("missing device {}", reference_id.value())))?;
+    let actual = device.logic(field).ok_or_else(|| {
+        test_error(format!(
+            "missing logic field {field} on device {}",
+            reference_id.value()
+        ))
+    })?;
+    assert_number(actual, expected, field)
+}
+
+fn assert_housing_logic(housing: &IcHousing, field: &str, expected: f64) -> TestResult {
+    let actual = housing.device().logic(field).ok_or_else(|| {
+        test_error(format!(
+            "missing logic field {field} on housing {}",
+            housing.reference_id().value()
+        ))
+    })?;
+    assert_number(actual, expected, field)
+}
+
+fn housing(world: &World, reference_id: ReferenceId) -> TestResult<&IcHousing> {
+    world
+        .ic10_housing(reference_id)
+        .ok_or_else(|| test_error(format!("missing housing {}", reference_id.value())))
+}
+
+fn assert_number(actual: f64, expected: f64, label: &str) -> TestResult {
+    if numbers_close(actual, expected) {
+        Ok(())
+    } else {
+        Err(test_error(format!(
+            "expected {label}={expected}, got {label}={actual}"
+        )))
     }
 }
 
@@ -232,17 +256,17 @@ fn numbers_close(actual: f64, expected: f64) -> bool {
     (actual - expected).abs() <= tolerance
 }
 
-fn set_housing_identity(
-    world: &mut World,
-    id: stationc::sim::ic10::ReferenceId,
-    name: &str,
-) -> TestResult {
+fn set_housing_identity(world: &mut World, id: ReferenceId, name: &str) -> TestResult {
     let housing = world
         .ic10_housing_mut(id)
-        .ok_or_else(|| format!("missing IC housing {}", id.value()))?;
+        .ok_or_else(|| test_error(format!("missing IC housing {}", id.value())))?;
     housing.device_mut().set_prefab_hash(HOUSING_TYPE);
     housing.device_mut().set_name_hash(hash(name));
     Ok(())
+}
+
+fn test_error(message: impl Into<String>) -> Box<dyn StdError> {
+    Box::new(io::Error::other(message.into()))
 }
 
 fn named_device(prefab_hash: f64, name: &str) -> Device {
