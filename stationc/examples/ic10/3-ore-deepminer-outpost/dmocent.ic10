@@ -1,0 +1,79 @@
+alias CentrifugeA d0
+alias CentrifugeB d1
+alias CentrifugeC d2
+define FullThreshold 380
+define EmptyThreshold 0
+main:
+bdns CentrifugeA fault
+bdns CentrifugeB fault
+bdns CentrifugeC fault
+s CentrifugeA On 1
+s CentrifugeB On 1
+s CentrifugeC On 1
+l r0 CentrifugeA Open
+bgtz r0 handle_a
+l r0 CentrifugeB Open
+bgtz r0 handle_b
+l r0 CentrifugeC Open
+bgtz r0 handle_c
+l r1 CentrifugeA Reagents
+bge r1 FullThreshold open_a
+l r1 CentrifugeB Reagents
+bge r1 FullThreshold open_b
+l r1 CentrifugeC Reagents
+bge r1 FullThreshold open_c
+s db Setting 0
+yield
+j main
+handle_a:
+l r1 CentrifugeA Reagents
+ble r1 EmptyThreshold close_a
+s db Setting 10
+yield
+j main
+handle_b:
+l r1 CentrifugeB Reagents
+ble r1 EmptyThreshold close_b
+s db Setting 11
+yield
+j main
+handle_c:
+l r1 CentrifugeC Reagents
+ble r1 EmptyThreshold close_c
+s db Setting 12
+yield
+j main
+open_a:
+s CentrifugeA Open 1
+s db Setting 10
+yield
+j main
+open_b:
+s CentrifugeB Open 1
+s db Setting 11
+yield
+j main
+open_c:
+s CentrifugeC Open 1
+s db Setting 12
+yield
+j main
+close_a:
+s CentrifugeA Open 0
+s db Setting 0
+yield
+j main
+close_b:
+s CentrifugeB Open 0
+s db Setting 0
+yield
+j main
+close_c:
+s CentrifugeC Open 0
+s db Setting 0
+yield
+j main
+fault:
+s db Setting -1
+yield
+j main

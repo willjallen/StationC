@@ -1,0 +1,21 @@
+alias Proximity d0
+define LedType 1944485013
+define LightType -1860064656
+define LightName HASH("DMOLIGHT")
+define RangeMeters 50
+main:
+bdns Proximity no_sensor
+s Proximity Setting RangeMeters
+l r0 Proximity Activate
+sgtz r0 r0
+sbn LedType LightName On r0
+sbn LightType LightName On r0
+s db Setting r0
+yield
+j main
+no_sensor:
+sbn LedType LightName On 0
+sbn LightType LightName On 0
+s db Setting -1
+yield
+j main
