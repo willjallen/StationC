@@ -1,4 +1,3 @@
-
 /**
 
 - if, while
@@ -10,8 +9,15 @@
 
 
 */
+
+#[derive(Debug, Clone)]
+pub(super) struct Token {
+    token_kind: TokenKind,
+    token_content: String,
+}
+
 #[derive(Debug, Copy, Clone)]
-pub(super) enum Token {
+pub(super) enum TokenKind {
     If,
     While,
     Identifier,
@@ -27,9 +33,5 @@ pub(super) enum Token {
     GreaterThanOrEqual,
     Equals,
 
-    Invalid
-}
-
-pub(super) struct IdentifierName {
-    name: str
+    Invalid,
 }
